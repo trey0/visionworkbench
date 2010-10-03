@@ -70,6 +70,11 @@ void vw::photometry::AppendExposureInfoToFile(std::string exposureFilename,
   std::string currInputFile = currModelParams.inputFilename;
 
   fp = fopen(exposureFilename.c_str(), "a");
+  if (NULL == fp) {
+      fprintf(stderr, "ERROR: AppendExposureInfoToFile: couldn't open %s for appending: %s\n",
+              exposureFilename.c_str(), strerror(errno));
+      exit(1);
+  }
 
   fprintf(fp, "%s %f\n", currInputFile.c_str(), currModelParams.exposureTime);
 
