@@ -88,6 +88,11 @@ vw::photometry::ReadExposureInfoFile(std::string exposureFilename,
   std::vector<float> exposureTimeVector(numEntries);
 
   fp = fopen(exposureFilename.c_str(), "r");
+  if (NULL == fp) {
+      fprintf(stderr, "ERROR: ReadExposureInfoFile: couldn't open %s for reading: %s\n",
+              exposureFilename.c_str(), strerror(errno));
+      exit(1);
+  }
 
   for (int i = 0; i < numEntries; i++){
     char *filename = new char[500];
