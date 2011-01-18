@@ -9,6 +9,7 @@
 
 #include <boost/filesystem/path.hpp>
 #include <boost/filesystem/convenience.hpp>
+#include <boost/foreach.hpp>
 namespace fs = boost::filesystem;
 
 #include <vw/FileIO/DiskImageResource.h>
@@ -20,14 +21,18 @@ namespace mosaic {
   std::string GMapQuadTreeConfig::image_path( QuadTreeGenerator const& qtree, std::string const& name ) {
     fs::path path( qtree.get_name(), fs::native );
 
-    Vector2i pos(0,0);
-    for ( int i=0; i<(int)name.length(); ++i ) {
+    Vector<size_t, 2> pos(0,0);
+    BOOST_FOREACH(char n, name) {
       pos *= 2;
-      if( name[i]=='1' ) pos += Vector2i(1,0);
-      else if( name[i]=='2' ) pos += Vector2i(0,1);
-      else if( name[i]=='3' ) pos += Vector2i(1,1);
-      else if( name[i]!='0' ) {
-        vw_throw( LogicErr() << "GMap output format incompatible with non-standard quadtree structure" );
+      // this is a pretty weird layout, but it's the one that matches the
+      // current nasamaps.js. Don't blame me, I didn't vote for him.
+      switch (n) {
+        case '0': pos += Vector2i(0,1); break; // Upper Left
+        case '1': pos += Vector2i(1,1); break; // Upper Right
+        case '2': pos += Vector2i(0,0); break; // Lower Left
+        case '3': pos += Vector2i(1,0); break; // Lower Right
+        default:
+          vw_throw( LogicErr() << "GMap output format incompatible with non-standard quadtree structure" );
       }
     }
     std::ostringstream oss;
@@ -37,9 +42,9 @@ namespace mosaic {
     return path.native_file_string();
   }
 
-  boost::shared_ptr<ImageResource> GMapQuadTreeConfig::tile_resource( QuadTreeGenerator const& /*qtree*/, QuadTreeGenerator::TileInfo const& info, ImageFormat const& format ) {
+  boost::shared_ptr<DstImageResource> GMapQuadTreeConfig::tile_resource( QuadTreeGenerator const& /*qtree*/, QuadTreeGenerator::TileInfo const& info, ImageFormat const& format ) {
     create_directories( fs::path( info.filepath, fs::native ).branch_path() );
-    return boost::shared_ptr<ImageResource>( DiskImageResource::create( info.filepath + info.filetype, format, info.filetype ) );
+    return boost::shared_ptr<DstImageResource>( DiskImageResource::create( info.filepath + info.filetype, format, info.filetype ) );
   }
 
   void GMapQuadTreeConfig::configure( QuadTreeGenerator& qtree ) const {

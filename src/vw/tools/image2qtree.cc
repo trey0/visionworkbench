@@ -53,7 +53,8 @@ using std::endl;
 VW_DEFINE_ENUM(Channel, 5, (NONE, UINT8, UINT16, INT16, FLOAT));
 VW_DEFINE_ENUM(Mode, 8, (NONE, KML, TMS, UNIVIEW, GMAP, CELESTIA, GIGAPAN, GIGAPAN_NOPROJ));
 VW_DEFINE_ENUM(DatumOverride, 5, (NONE, WGS84, LUNAR, MARS, SPHERE))
-VW_DEFINE_ENUM(Projection, 9, (
+VW_DEFINE_ENUM(Projection, 10, (
+    NONE,
     SINUSOIDAL,
     MERCATOR,
     TRANSVERSE_MERCATOR,
@@ -123,7 +124,7 @@ struct Options {
     Tristate<double> p1, p2;
     Tristate<int32> utm_zone;
     proj_() :
-      type(Projection::PLATE_CARREE),
+      type(Projection::NONE),
       scale(1),
       utm_zone(0, true) {}
   } proj;
@@ -191,22 +192,23 @@ vw::int32 compute_resolution(const Mode& p, const GeoTransform& t, const Vector2
   }
 }
 
-static void get_normalize_vals(DiskImageResourceGDAL &file, const Options& opt) {
+static void get_normalize_vals(boost::shared_ptr<DiskImageResource> file,
+                               const Options& opt) {
 
-  DiskImageView<PixelRGBA<float> > min_max_file(&file);
+  DiskImageView<PixelRGB<float> > min_max_file(file);
   float new_lo, new_hi;
   if ( opt.nodata.set() ) {
-    PixelRGBA<float> no_data_value( opt.nodata.value() );
+    PixelRGB<float> no_data_value( opt.nodata.value() );
     min_max_channel_values( create_mask(min_max_file,no_data_value), new_lo, new_hi );
-  } else if ( file.has_nodata_value() ) {
-    PixelRGBA<float> no_data_value( file.nodata_value() );
+  } else if ( file->has_nodata_read() ) {
+    PixelRGB<float> no_data_value( file->nodata_read() );
     min_max_channel_values( create_mask(min_max_file,no_data_value), new_lo, new_hi );
   } else {
     min_max_channel_values( min_max_file, new_lo, new_hi );
   }
   lo_value = std::min(new_lo, lo_value);
   hi_value = std::max(new_hi, hi_value);
-  cout << "Pixel range for \"" << file.filename() << "\": [" << new_lo << " " << new_hi << "]    Output dynamic range: [" << lo_value << " " << hi_value << "]" << endl;
+  cout << "Pixel range for \"" << file->filename() << ": [" << new_lo << " " << new_hi << "]    Output dynamic range: [" << lo_value << " " << hi_value << "]" << endl;
 }
 
 template <class PixelT>
@@ -224,13 +226,14 @@ void do_normal_mosaic(const Options& opt, const ProgressCallback *progress) {
     quadtree.generate( *progress );
 }
 
-GeoReference make_input_georef(DiskImageResourceGDAL& file, const Options& opt) {
+GeoReference make_input_georef(boost::shared_ptr<DiskImageResource> file,
+                               const Options& opt) {
   GeoReference input_georef;
   bool fail_read_georef = false;
   try {
-    fail_read_georef = !read_georeference( input_georef, file );
+    fail_read_georef = !read_georeference( input_georef, *file );
   } catch ( InputErr const& e ) {
-    vw_out(ErrorMessage) << "Input " << file.filename() << " has malformed georeferencing information.\n";
+    vw_out(ErrorMessage) << "Input " << file->filename() << " has malformed georeferencing information.\n";
     fail_read_georef = true;
   }
 
@@ -249,9 +252,9 @@ GeoReference make_input_georef(DiskImageResourceGDAL& file, const Options& opt) 
 
   if( opt.manual ) {
     Matrix3x3 m;
-    m(0,0) = double(opt.east - opt.west) / file.cols();
+    m(0,0) = double(opt.east - opt.west) / file->cols();
     m(0,2) = opt.west;
-    m(1,1) = double(opt.south - opt.north) / file.rows();
+    m(1,1) = double(opt.south - opt.north) / file->rows();
     m(1,2) = opt.north;
     m(2,2) = 1;
     input_georef.set_transform( m );
@@ -270,6 +273,7 @@ GeoReference make_input_georef(DiskImageResourceGDAL& file, const Options& opt) 
     case Projection::STEREOGRAPHIC:           input_georef.set_stereographic(opt.proj.lat,opt.proj.lon,opt.proj.scale); break;
     case Projection::TRANSVERSE_MERCATOR:     input_georef.set_transverse_mercator(opt.proj.lat,opt.proj.lon,opt.proj.scale); break;
     case Projection::UTM:                     input_georef.set_UTM( abs(opt.proj.utm_zone), opt.proj.utm_zone > 0 ); break;
+    case Projection::NONE: break;
   }
 
   if( opt.nudge_x || opt.nudge_y ) {
@@ -300,8 +304,8 @@ void do_mosaic(const Options& opt, const ProgressCallback *progress)
   std::vector<GeoReference> georeferences;
 
   BOOST_FOREACH(const string filename, opt.input_files) {
-    DiskImageResourceGDAL file( filename );
-    cout << "Adding file " << file.filename() << endl;
+    boost::shared_ptr<DiskImageResource> file( DiskImageResource::open(filename) );
+    cout << "Adding file " << file->filename() << endl;
 
     if( opt.normalize ) get_normalize_vals(file, opt);
 
@@ -317,8 +321,8 @@ void do_mosaic(const Options& opt, const ProgressCallback *progress)
     // Calculate the best resolution at 5 different points in the image,
     // as occasionally there's a singularity at the center pixel that
     // makes it extremely tiny (such as in pole-centered images).
-    const int cols = file.cols();
-    const int rows = file.rows();
+    const int cols = file->cols();
+    const int rows = file->rows();
     Vector2 res_pixel[5];
     res_pixel[0] = Vector2( cols/2, rows/2 );
     res_pixel[1] = Vector2( cols/2 + cols/4, rows/2 );
@@ -353,11 +357,19 @@ void do_mosaic(const Options& opt, const ProgressCallback *progress)
     const std::string& filename = opt.input_files[i];
     const GeoReference& input_ref = georeferences[i];
 
+    boost::shared_ptr<DiskImageResource> file( DiskImageResource::open(filename) );
     GeoTransform geotx( input_ref, output_georef );
-    ImageViewRef<PixelT> source = DiskImageView<PixelT>( filename );
+    ImageViewRef<PixelT> source = DiskImageView<PixelT>( file );
 
-    if( opt.nodata.set() )
+    if ( opt.nodata.set() ) {
+      vw_out(VerboseDebugMessage, "tool") << "Using nodata value: "
+                                          << opt.nodata.value() << "\n";
       source = mask_to_alpha(create_mask(pixel_cast<typename PixelWithoutAlpha<PixelT>::type >(source),ChannelT(opt.nodata.value())));
+    } else if ( file->has_nodata_read() ) {
+      vw_out(VerboseDebugMessage, "tool") << "Using nodata value: "
+                                          << file->nodata_read() << "\n";
+      source = mask_to_alpha(create_mask(pixel_cast<typename PixelWithoutAlpha<PixelT>::type >(source),ChannelT(file->nodata_read())));
+    }
 
     bool global = boost::trim_copy(input_ref.proj4_str())=="+proj=longlat" &&
       fabs(input_ref.lonlat_to_pixel(Vector2(-180,0)).x()) < 1 &&
@@ -366,11 +378,21 @@ void do_mosaic(const Options& opt, const ProgressCallback *progress)
       fabs(input_ref.lonlat_to_pixel(Vector2(0,-90)).y() - source.rows()) < 1;
 
     // Do various modifications to the input image here.
-    if( opt.pixel_scale.set() || opt.pixel_offset.set() )
-      source = channel_cast_rescale<ChannelT>( DiskImageView<PixelT>( filename ) * opt.pixel_scale.value() + opt.pixel_offset.value() );
+    if( opt.pixel_scale.set() || opt.pixel_offset.set() ) {
+      vw_out(VerboseDebugMessage, "tool") << "Apply input scaling: "
+                           << opt.pixel_scale.value() << " offset: "
+                           << opt.pixel_offset.value() << "\n";
+      source = channel_cast_rescale<ChannelT>( source * opt.pixel_scale.value() + opt.pixel_offset.value() );
+    }
 
-    if( opt.normalize )
-      source = pixel_cast<PixelT>(channel_cast_rescale<ChannelT>( normalize_retain_alpha(DiskImageView<PixelRGBA<float> >( filename ), lo_value, hi_value, 0.0, 1.0) ) );
+    if( opt.normalize ) {
+      vw_out(VerboseDebugMessage, "tool") << "Apply normalizing: ["
+                                          << lo_value << ", "
+                                          << hi_value << "]\n";
+      typedef ChannelRange<ChannelT> range_type;
+      source = normalize_retain_alpha(source, lo_value, hi_value,
+                                      range_type::min(), range_type::max());
+    }
 
     BBox2i bbox = geotx.forward_bbox( BBox2i(0,0,source.cols(),source.rows()) );
     if (global) {
@@ -380,7 +402,8 @@ void do_mosaic(const Options& opt, const ProgressCallback *progress)
     else
       source = crop( transform( source, geotx ), bbox );
 
-    // Images that wrap the date line must be added to the composite on both sides.
+    // Images that wrap the date line must be added to the composite
+    // on both sides.
     if( bbox.max().x() > total_resolution ) {
       composite.insert( source, bbox.min().x()-total_resolution, bbox.min().y() );
     }
@@ -417,6 +440,8 @@ void do_mosaic(const Options& opt, const ProgressCallback *progress)
 
   QuadTreeGenerator quadtree( composite, opt.output_file_name );
 
+  // This whole bit here is terrible. This functionality should be moved into
+  // the Config base class somehow.
   if( opt.mode == Mode::KML ) {
     KMLQuadTreeConfig *c2 = dynamic_cast<KMLQuadTreeConfig*>(config.get());
     BBox2 ll_bbox( -180.0 + (360.0*total_bbox.min().x())/xresolution,
@@ -427,9 +452,13 @@ void do_mosaic(const Options& opt, const ProgressCallback *progress)
     c2->set_longlat_bbox( ll_bbox );
     c2->set_max_lod_pixels( opt.kml.max_lod_pixels );
     c2->set_draw_order_offset( opt.kml.draw_order_offset );
+  } else if( opt.mode == Mode::CELESTIA ) {
+    CelestiaQuadTreeConfig *c2 = dynamic_cast<CelestiaQuadTreeConfig*>(config.get());
+    c2->set_module(opt.module_name.value());
   } else if( opt.mode == Mode::UNIVIEW ) {
     UniviewQuadTreeConfig *c2 = dynamic_cast<UniviewQuadTreeConfig*>(config.get());
     c2->set_terrain(opt.terrain);
+    c2->set_module(opt.module_name.value());
   } else if ( opt.mode == Mode::GIGAPAN ) {
     GigapanQuadTreeConfig *c2 = dynamic_cast<GigapanQuadTreeConfig*>(config.get());
     BBox2 ll_bbox( -180.0 + (360.0*total_bbox.min().x())/xresolution,
@@ -456,61 +485,6 @@ void do_mosaic(const Options& opt, const ProgressCallback *progress)
   // Generate the composite.
   vw_out() << "Generating " << opt.mode.string() << " overlay..." << endl;
   quadtree.generate(*progress);
-
-  // This should really get moved into a metadata function for
-  // UniviewQuadTreeConfig.
-  if(opt.mode == Mode::UNIVIEW) {
-    string config_filename = opt.output_file_name + ".conf";
-    std::ofstream conf( config_filename.c_str() );
-    if(opt.terrain) {
-      conf << "// Terrain\n";
-      conf << "HeightmapCacheLocation=modules/" << opt.module_name.value() << "/Offlinedatasets/" << opt.output_file_name << "/Terrain/\n";
-      conf << "HeightmapCallstring=Generated by the NASA Vision Workbench image2qtree tool.\n";
-      conf << "HeightmapFormat=" << quadtree.get_file_type() << '\n';
-      conf << "NrHeightmapLevels=" << quadtree.get_tree_levels()-1 << '\n';
-      conf << "NrLevelsPerHeightmap=1\n";
-    } else {
-      conf << "[Offlinedataset]\n";
-      conf << "NrRows=1\n";
-      conf << "NrColumns=2\n";
-      conf << "Bbox= -180 -90 180 90\n";
-      conf << "DatasetTitle=" << opt.output_file_name << "\n";
-      conf << "Tessellation=19\n\n";
-
-      conf << "// Texture\n";
-      conf << "TextureCacheLocation=modules/" << opt.module_name.value() << "/Offlinedatasets/" << opt.output_file_name << "/Texture/\n";
-      conf << "TextureCallstring=Generated by the NASA Vision Workbench image2qtree tool.\n";
-      conf << "TextureFormat=" << quadtree.get_file_type() << "\n";
-      conf << "TextureLevels= " << quadtree.get_tree_levels()-1 << "\n";
-      conf << "TextureSize= " << opt.tile_size.value() << "\n\n";
-    }
-    conf.close();
-    cout << "Note: You must merge the texture and terrain config files into a single file (Terrain info should go below texture info.)" << endl;
-    cout << "Both output sets should be in the same directory, with the texture in a subdirectory named Texture and the terrain in a subdirectory named Terrain." << endl;
-  } else if (opt.mode == Mode::CELESTIA) {
-    string fn = opt.output_file_name + ".ctx";
-    std::ofstream ctx( fn.c_str() );
-    ctx << "VirtualTexture\n";
-    ctx << "{\n";
-    ctx << "        ImageDirectory \"" << opt.output_file_name << "\"\n";
-    ctx << "        BaseSplit 0\n";
-    ctx << "        TileSize " << (opt.tile_size >> 1) << "\n";
-    ctx << "        TileType \"" << opt.output_file_type.value() << "\"\n";
-    ctx << "}\n";
-    ctx.close();
-
-    fn = opt.output_file_name + ".ssc";
-    std::ofstream ssc( fn.c_str() );
-
-    ssc << "AltSurface \"" << opt.output_file_name << "\" \"" << opt.module_name.value() << "\"\n";
-    ssc << "{\n";
-    ssc << "    Texture \"" << opt.output_file_name << ".ctx" << "\"\n";
-    ssc << "}\n";
-    ssc.close();
-    cout << "Place " << opt.output_file_name << ".ssc" << " in Celestia's extras dir" << endl;
-    cout << "Place " << opt.output_file_name << ".ctx" << " and the output dir ("
-                          << opt.output_file_name << ") in extras/textures/hires" << endl;
-  }
 }
 
 
@@ -615,19 +589,17 @@ int run(const Options& opt) {
   const ProgressCallback *progress = &tpc;
 
   // Get the right pixel/channel type, and call the mosaic.
-  DiskImageResource *first_resource = DiskImageResource::open(opt.input_files[0]);
-  ChannelTypeEnum channel_type = first_resource->channel_type();
-  PixelFormatEnum pixel_format = first_resource->pixel_format();
-  delete first_resource;
+  ImageFormat fmt = tools::taste_image(opt.input_files[0]);
+
   if(opt.channel_type != Channel::NONE)
-    channel_type = channel_name_to_enum(opt.channel_type.string());
+    fmt.channel_type = channel_name_to_enum(opt.channel_type.string());
 
   // Convert non-alpha channel images into images with one for the
   // composite.
-  switch(pixel_format) {
+  switch(fmt.pixel_format) {
     case VW_PIXEL_GRAY:
     case VW_PIXEL_GRAYA:
-      switch(channel_type) {
+      switch(fmt.channel_type) {
         case VW_CHANNEL_UINT8:  do_mosaic<PixelGrayA<uint8>   >(opt, progress); break;
         case VW_CHANNEL_INT16:  do_mosaic<PixelGrayA<int16>   >(opt, progress); break;
         case VW_CHANNEL_UINT16: do_mosaic<PixelGrayA<uint16>  >(opt, progress); break;
@@ -637,7 +609,7 @@ int run(const Options& opt) {
     case VW_PIXEL_RGB:
     case VW_PIXEL_RGBA:
     default:
-      switch(channel_type) {
+      switch(fmt.channel_type) {
         case VW_CHANNEL_UINT8:  do_mosaic<PixelRGBA<uint8>   >(opt, progress); break;
         case VW_CHANNEL_INT16:  do_mosaic<PixelRGBA<int16>   >(opt, progress); break;
         case VW_CHANNEL_UINT16: do_mosaic<PixelRGBA<uint16>  >(opt, progress); break;

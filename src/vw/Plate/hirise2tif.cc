@@ -89,35 +89,35 @@ public:
     tokenizer::iterator tok_iter = tokens.begin();
 
     if (tok_iter == tokens.end()) this->error("stats", range_string);
-    min_gray = boost::lexical_cast<int>(*tok_iter);
+    min_gray = boost::lexical_cast<uint16>(*tok_iter);
     ++tok_iter;
 
     if (tok_iter == tokens.end()) this->error("stats", range_string);
-    max_gray = boost::lexical_cast<int>(*tok_iter);
+    max_gray = boost::lexical_cast<uint16>(*tok_iter);
     ++tok_iter;
 
     if (tok_iter == tokens.end()) this->error("stats", range_string);
-    min_i = boost::lexical_cast<int>(*tok_iter);
+    min_i = boost::lexical_cast<uint16>(*tok_iter);
     ++tok_iter;
 
     if (tok_iter == tokens.end()) this->error("stats", range_string);
-    max_i = boost::lexical_cast<int>(*tok_iter);
+    max_i = boost::lexical_cast<uint16>(*tok_iter);
     ++tok_iter;
 
     if (tok_iter == tokens.end()) this->error("stats", range_string);
-    min_r = boost::lexical_cast<int>(*tok_iter);
+    min_r = boost::lexical_cast<uint16>(*tok_iter);
     ++tok_iter;
 
     if (tok_iter == tokens.end()) this->error("stats", range_string);
-    max_r = boost::lexical_cast<int>(*tok_iter);
+    max_r = boost::lexical_cast<uint16>(*tok_iter);
     ++tok_iter;
 
     if (tok_iter == tokens.end()) this->error("stats", range_string);
-    min_b = boost::lexical_cast<int>(*tok_iter);
+    min_b = boost::lexical_cast<uint16>(*tok_iter);
     ++tok_iter;
 
     if (tok_iter == tokens.end()) this->error("stats", range_string);
-    max_b = boost::lexical_cast<int>(*tok_iter);
+    max_b = boost::lexical_cast<uint16>(*tok_iter);
     ++tok_iter;
 
     if (tok_iter != tokens.end()) this->error("snapshot", range_string);
@@ -141,7 +141,7 @@ public:
       ImageView<PixelRGB<uint16> > stripe( image.cols(), filter );
       TerminalProgressCallback progress("plate.tools.hirise2tif", "");
       for( int y=0; y+filter-1<image.rows(); y+=filter ) {
-        progress.report_progress( (double)y / image.rows() );
+        progress.report_progress( double(y) / image.rows() );
         stripe = crop( image, 0, y, image.cols(), filter );
         ImageView<PixelRGB<uint16> >::pixel_accessor col = stripe.origin();
         for( int x=0; x+filter-1<image.cols(); x+=filter ) {
@@ -178,7 +178,7 @@ public:
         ImageView<uint16> stripe( image.cols(), filter );
         TerminalProgressCallback progress("plate.tools.hirise2tif", "");
         for( int y=0; y+filter-1<image.rows(); y+=filter ) {
-          progress.report_progress( (double)y / image.rows() );
+          progress.report_progress( double(y) / image.rows() );
           stripe = crop( image, 0, y, image.cols(), filter );
           ImageView<uint16>::pixel_accessor col = stripe.origin();
           for( int x=0; x+filter-1<image.cols(); x+=filter ) {
@@ -504,7 +504,7 @@ int main( int argc, char *argv[] ) {
     ("uniform-stretch", "Stretch all color channels using the same range.")
     ("cache", po::value<unsigned>(&cache_size)->default_value(512), "Cache size, in megabytes")
     ("gdal-cache", po::value<unsigned>(&gdal_cache_size)->default_value(256), "GDAL internal cache size, in megabytes")
-    ("help", "Display this help message");
+    ("help,h", "Display this help message");
 
   po::options_description output_options("Output Options");
   output_options.add_options()

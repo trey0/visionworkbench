@@ -24,8 +24,8 @@ namespace fs = boost::filesystem;
 // Erases a file suffix if one exists and returns the base string
 static std::string prefix_from_filename(std::string const& filename) {
   std::string result = filename;
-  int index = result.rfind(".");
-  if (index != -1)
+  size_t index = result.rfind(".");
+  if (index != std::string::npos)
     result.erase(index, result.size());
   return result;
 }
@@ -34,7 +34,7 @@ static std::string prefix_from_filename(std::string const& filename) {
 // ----------------------------------------------------------------------------
 
 void save_toast_tile(std::string base_output_name, boost::shared_ptr<PlateFile> platefile,
-                     int32 col, int32 row, int32 level, int32 transaction_id) {
+                     int32 col, int32 row, int32 level, TransactionOrNeg transaction_id) {
 
   try {
 
@@ -53,9 +53,7 @@ void save_toast_tile(std::string base_output_name, boost::shared_ptr<PlateFile> 
     ostr << "/" << row;
 
     // transaction_id = -1 returns the latest tile available
-    std::string output_filename = platefile->read_to_file(ostr.str(), col, row, level, transaction_id);
-    // std::cout << "\t--> [ " << col << " " << row << " " << level << "] : Writing "
-    //           << output_filename << "\n";
+    platefile->read_to_file(ostr.str(), col, row, level, transaction_id);
 
   } catch (TileNotFoundErr &e) {
     //    std::cout << "\t--> [ " << col << " " << row << " " << level << "] : Missing tile\n";
@@ -67,7 +65,7 @@ void save_toast_tile(std::string base_output_name, boost::shared_ptr<PlateFile> 
 // ----------------------------------------------------------------------------
 
 void save_gigapan_tile(std::string base_output_name, boost::shared_ptr<PlateFile> platefile,
-                       int32 col, int32 row, int32 level, int32 transaction_id) {
+                       int32 col, int32 row, int32 level, TransactionOrNeg transaction_id) {
 
   try {
     std::stringstream filename_stream;
@@ -90,7 +88,7 @@ void save_gigapan_tile(std::string base_output_name, boost::shared_ptr<PlateFile
 
     std::string filename = filename_stream.str();
 
-    int size = filename.size();
+    int size = boost::numeric_cast<int>(filename.size());
     while ( (size > 3) && filename.size() >= 3 ) {
       directory_stream << filename.substr(0, 3);
       filename.erase(0, 3);
@@ -104,9 +102,7 @@ void save_gigapan_tile(std::string base_output_name, boost::shared_ptr<PlateFile
     filename = directory_stream.str() + filename_stream.str();
 
     // transaction_id = -1 returns the latest tile available
-    std::string output_filename = platefile->read_to_file(filename, col, row, level, transaction_id);
-    //    std::cout << "\t--> [ " << col << " " << row << " " << level << "] : Writing "
-    //              << output_filename << "\n";
+    platefile->read_to_file(filename, col, row, level, transaction_id);
 
   } catch (TileNotFoundErr &e) {
     //    std::cout << "\t--> [ " << col << " " << row << " " << level << "] : Missing tile\n";
@@ -165,7 +161,8 @@ void do_all_levels(std::string platefile_name, std::string output_name,
                    std::string output_format, int transaction_id) {
 
   // Open the plate file
-  boost::shared_ptr<PlateFile> platefile(new PlateFile(platefile_name));
+  // XXX: platefile_name should be a url
+  boost::shared_ptr<PlateFile> platefile(new PlateFile(Url(platefile_name)));
   std::cout << "Exporting " << platefile->num_levels() << " levels of tiles to " << output_name << "\n";
 
   // Create the output directory
@@ -209,7 +206,7 @@ int main( int argc, char *argv[] ) {
      "Specify the base output directory")
     ("transaction-id,t", po::value<int>(&transaction_id)->default_value(-1),
      "Specify the transaction id to save.")
-    ("help", "Display this help message");
+    ("help,h", "Display this help message");
 
   po::options_description hidden_options("");
   hidden_options.add_options()

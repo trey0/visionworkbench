@@ -42,7 +42,15 @@ int main(int argc, char **argv) {
   // span.
   std::srand(boost::numeric_cast<unsigned int>((clock())));
 
-  return RUN_ALL_TESTS();
+  fs::path start_dir(TEST_SRCDIR);
+
+  fs::current_path(start_dir);
+  int ret = RUN_ALL_TESTS();
+  fs::path end_dir = fs::current_path();
+
+  VW_ASSERT( fs::equivalent(start_dir, end_dir),
+             vw::LogicErr() << "Something changed the working directory");
+  return ret;
 }
 
 namespace vw {
@@ -65,6 +73,11 @@ UnlinkName::UnlinkName(const char *base, const std::string& directory)
 UnlinkName::~UnlinkName() {
   if (!this->empty())
     fs::remove_all(this->c_str());
+}
+
+std::string getenv2(const char *key, const std::string& Default) {
+  const char *val = getenv(key);
+  return val ? val : Default;
 }
 
 }} // namespace vw::test

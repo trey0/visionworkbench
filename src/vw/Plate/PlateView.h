@@ -11,6 +11,7 @@
 #include <vw/Image/ImageViewBase.h>
 #include <vw/Image/ImageViewRef.h>
 #include <vw/Plate/PlateFile.h>
+#include <vw/Image/Transform.h>
 #include <boost/foreach.hpp>
 
 namespace vw {
@@ -28,7 +29,7 @@ namespace platefile {
     typedef PixelT result_type;
     typedef ProceduralPixelAccessor<PlateView> pixel_accessor;
 
-    PlateView(std::string url)
+    PlateView(const Url& url)
       : m_platefile( new PlateFile(url) ),
         m_current_level(m_platefile->num_levels()-1)
     { }
@@ -40,11 +41,11 @@ namespace platefile {
 
     // Standard ImageView interface methods
     int32 cols() const {
-      return pow(2,m_platefile->num_levels()-1) * m_platefile->default_tile_size();
+      return (1 << (m_platefile->num_levels()-1)) * m_platefile->default_tile_size();
     }
 
     int32 rows() const {
-      return pow(2,m_platefile->num_levels()-1) * m_platefile->default_tile_size();
+      return (1 << (m_platefile->num_levels()-1)) * m_platefile->default_tile_size();
     }
 
     int32 planes() const { return 1; }
@@ -61,7 +62,7 @@ namespace platefile {
 
     inline pixel_accessor origin() const { return pixel_accessor( *this, 0, 0 ); }
 
-    inline pixel_type operator()(float /*x*/, float /*y*/, int32 /*p*/ = 0) const {
+    inline pixel_type operator()(int32 /*x*/, int32 /*y*/, int32 /*p*/ = 0) const {
       vw_throw(NoImplErr() << "PlateView::operator() -- not yet implemented.");
     }
 
@@ -78,10 +79,10 @@ namespace platefile {
       aligned_level_bbox.min() = ( (level_bbox.min() / m_platefile->default_tile_size())
                                   * m_platefile->default_tile_size() );
       aligned_level_bbox.max().x() = ( int(ceilf( float(level_bbox.max().x()) /
-                                                  m_platefile->default_tile_size() ))
+                                                  float(m_platefile->default_tile_size()) ))
                                        * m_platefile->default_tile_size() );
       aligned_level_bbox.max().y() = ( int(ceilf( float(level_bbox.max().y()) /
-                                                  m_platefile->default_tile_size() ))
+                                                  float(m_platefile->default_tile_size()) ))
                                        * m_platefile->default_tile_size() );
 
       // Searching for tile headers

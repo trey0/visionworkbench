@@ -33,26 +33,12 @@ namespace vw {
     typedef typename ImageT::pixel_type result_type;
     typedef ProceduralPixelAccessor<BlockRasterizeView> pixel_accessor;
 
-    BlockRasterizeView( ImageT const& image,
-                        Vector2i const& block_size,
-                        int num_threads = 0,
-                        bool cache = false )
+    BlockRasterizeView( ImageT const& image, Vector2i const& block_size,
+                        int num_threads = 0, Cache *cache = NULL )
       : m_child( new ImageT(image) ),
         m_block_size( block_size ),
         m_num_threads( num_threads ),
-        m_cache_ptr( cache ? (&vw_system_cache()) : 0 )
-    {
-      initialize();
-    }
-
-    BlockRasterizeView( ImageT const& image,
-                        Vector2i const& block_size,
-                        int num_threads,
-                        Cache &cache )
-      : m_child( new ImageT(image) ),
-        m_block_size( block_size ),
-        m_num_threads( num_threads ),
-        m_cache_ptr( &cache )
+        m_cache_ptr( cache )
     {
       initialize();
     }
@@ -155,7 +141,7 @@ namespace vw {
         // very wide images?  Either way we will guess wrong some of
         // the time, so advanced users will have to know what they're
         // doing in any case.
-        int32 block_rows = default_blocksize / (planes()*cols()*sizeof(pixel_type));
+        int32 block_rows = default_blocksize / (planes()*cols()*int32(sizeof(pixel_type)));
         if( block_rows < 1 ) block_rows = 1;
         else if( block_rows > rows() ) block_rows = rows();
         m_block_size = Vector2i( cols(), block_rows );
@@ -196,17 +182,17 @@ namespace vw {
 
   template <class ImageT>
   inline BlockRasterizeView<ImageT> block_rasterize( ImageViewBase<ImageT> const& image, Vector2i const& block_size, int num_threads = 0 ) {
-    return BlockRasterizeView<ImageT>( image.impl(), block_size, num_threads, false );
+    return BlockRasterizeView<ImageT>( image.impl(), block_size, num_threads );
   }
 
   template <class ImageT>
   inline BlockRasterizeView<ImageT> block_cache( ImageViewBase<ImageT> const& image, Vector2i const& block_size, int num_threads = 0 ) {
-    return BlockRasterizeView<ImageT>( image.impl(), block_size, num_threads, true );
+    return BlockRasterizeView<ImageT>( image.impl(), block_size, num_threads, &vw_system_cache() );
   }
 
   template <class ImageT>
   inline BlockRasterizeView<ImageT> block_cache( ImageViewBase<ImageT> const& image, Vector2i const& block_size, int num_threads, Cache& cache ) {
-    return BlockRasterizeView<ImageT>( image.impl(), block_size, num_threads, cache );
+    return BlockRasterizeView<ImageT>( image.impl(), block_size, num_threads, &cache );
   }
 
 } // namespace vw

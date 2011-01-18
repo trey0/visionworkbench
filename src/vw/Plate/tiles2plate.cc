@@ -87,7 +87,7 @@ public:
 
     tile_name.erase(0, 1);
 
-    t.m_level = tile_name.length();
+    t.m_level = boost::numeric_cast<int32>(tile_name.length());
     if(t.m_level == 0) {
       t.m_row = t.m_col = 0;
       return t;
@@ -149,10 +149,10 @@ public:
 template <class ViewT>
 class PlateHandler : public TileHandler {
   boost::shared_ptr<PlateFile> m_platefile;
-  int32 m_write_transaction_id;
+  Transaction m_write_transaction_id;
 
 public:
-  PlateHandler( boost::shared_ptr<PlateFile> &platefile, int32 write_transaction_id )
+  PlateHandler( boost::shared_ptr<PlateFile> &platefile, Transaction write_transaction_id )
     : m_platefile(platefile), m_write_transaction_id(write_transaction_id)
   { }
   virtual ~PlateHandler() {}
@@ -203,7 +203,7 @@ int main( int argc, char *argv[] ) {
     ("format,f", po::value<std::string>(&tile_format)->default_value("toast"), "Tile directory format: toast, gigapan")
     ("output-name,o", po::value<std::string>(&output_file_name), "Specify the output plate file name.")
     ("file-type", po::value<std::string>(&output_file_type), "Output file type (png is used by default)")
-    ("help", "Display this help message");
+    ("help,h", "Display this help message");
 
   po::options_description hidden_options("");
   hidden_options.add_options()
@@ -302,7 +302,7 @@ int main( int argc, char *argv[] ) {
                                                   pixel_format, channel_type) );
 
     std::vector<TileHeader> empty_tile_list;
-    int32 write_transaction_id =
+    Transaction write_transaction_id =
       platefile->transaction_request("Writing tiles from tile tree " + tile_directory_name, -1);
 
     switch(pixel_format) {

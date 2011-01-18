@@ -5,7 +5,23 @@ dnl All Rights Reserved.
 dnl __END_LICENSE__
 
 
+m4_ifdef([_AX_FIXUPS], [], [m4_include([m4/fixups.m4])])
+
 AC_DEFUN([AX_COMMON_OPTIONS], [
+  m4_ifdef([_AX_COMMON_OPTIONS_PREPARE], [],
+  [
+    strip_arg() {
+        local bad="[$]1"
+        shift 1
+        for arg in "[$]@"; do
+            case "[$]arg" in
+                [$]bad) ;;
+                *) VW_ECHO_N([" [$]arg"]);;
+            esac
+        done
+    }
+    m4_define([_AX_COMMON_OPTIONS_PREPARE], [1])
+  ])
 
 ##################################################
 # Compilation options

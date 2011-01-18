@@ -10,13 +10,19 @@
 
 #include <vw/Plate/PagedIndex.h>
 #include <vw/Plate/IndexPage.h>
+#include <vw/Plate/HTTPUtils.h>
 #include <queue>
 
 namespace vw {
 namespace platefile {
 
-  class AmqpRpcClient;
+  template <typename ServiceT>
+  class RpcClient;
+
   class IndexService;
+  class IndexWriteUpdate;
+
+  typedef RpcClient<IndexService> IndexClient;
 
   // ----------------------------------------------------------------------
   //                         LOCAL INDEX PAGE
@@ -24,8 +30,7 @@ namespace platefile {
 
   class RemoteIndexPage : public IndexPage {
     int m_platefile_id;
-    boost::shared_ptr<AmqpRpcClient> m_rpc_controller;
-    boost::shared_ptr<IndexService> m_index_service;
+    boost::shared_ptr<IndexClient> m_client;
 
     // For packetizing write requests.
     std::queue<IndexWriteUpdate> m_write_queue;
@@ -34,8 +39,7 @@ namespace platefile {
   public:
 
     RemoteIndexPage(int platefile_id,
-                    boost::shared_ptr<AmqpRpcClient> rpc_controller,
-                    boost::shared_ptr<IndexService> index_service,
+                    boost::shared_ptr<IndexClient> client,
                     int level, int base_col, int base_row,
                     int page_width, int page_height);
 
@@ -54,15 +58,13 @@ namespace platefile {
 
   class RemotePageGenerator : public PageGeneratorBase {
     int m_platefile_id;
-    boost::shared_ptr<AmqpRpcClient> m_rpc_controller;
-    boost::shared_ptr<IndexService> m_index_service;
+    boost::shared_ptr<IndexClient> m_client;
     int m_level, m_base_col, m_base_row;
     int m_page_width, m_page_height;
 
   public:
     RemotePageGenerator( int platefile_id,
-                         boost::shared_ptr<AmqpRpcClient> rpc_controller,
-                         boost::shared_ptr<IndexService> index_service,
+                         boost::shared_ptr<IndexClient> client,
                          int level, int base_col, int base_row,
                          int page_width, int page_height );
     virtual ~RemotePageGenerator() {}
@@ -76,19 +78,16 @@ namespace platefile {
   /// produce pages from a file on disk.
   class RemotePageGeneratorFactory : public PageGeneratorFactory {
     int m_platefile_id;
-    boost::shared_ptr<AmqpRpcClient> m_rpc_controller;
-    boost::shared_ptr<IndexService> m_index_service;
+    boost::shared_ptr<IndexClient> m_client;
 
   public:
-    RemotePageGeneratorFactory() : m_platefile_id(-1) {}
-    RemotePageGeneratorFactory(int platefile_id,
-                               boost::shared_ptr<AmqpRpcClient> rpc_controller,
-                               boost::shared_ptr<IndexService> index_service) :
-      m_platefile_id(platefile_id), m_rpc_controller(rpc_controller),
-      m_index_service(index_service) {}
+    RemotePageGeneratorFactory(int platefile_id, boost::shared_ptr<IndexClient> client)
+      : m_platefile_id(platefile_id), m_client(client) {}
     virtual ~RemotePageGeneratorFactory() {}
-    virtual boost::shared_ptr<PageGeneratorBase> create(int level, int base_col, int base_row,
-                                                        int page_width, int page_height);
+
+    virtual boost::shared_ptr<PageGeneratorBase>
+    create(int level, int base_col, int base_row, int page_width, int page_height);
+
     virtual std::string who() const;
   };
 
@@ -97,22 +96,21 @@ namespace platefile {
   // -------------------------------------------------------------------
 
   class RemoteIndex : public PagedIndex {
-
+    Url m_url;
     int m_platefile_id;
-    IndexHeader m_index_header;
     std::string m_short_plate_filename;
     std::string m_full_plate_filename;
+    IndexHeader m_index_header;
 
     // Remote connection
-    boost::shared_ptr<AmqpRpcClient> m_rpc_controller;
-    boost::shared_ptr<IndexService> m_index_service;
+    boost::shared_ptr<IndexClient> m_client;
 
   public:
     /// Constructor (for opening an existing index)
-    RemoteIndex(std::string const& url);
+    RemoteIndex(const Url& url);
 
     /// Constructor (for creating a new index)
-    RemoteIndex(std::string const& url, IndexHeader new_index_info);
+    RemoteIndex(const Url& url, IndexHeader new_index_info);
 
     /// destructor
     virtual ~RemoteIndex();
@@ -126,24 +124,6 @@ namespace platefile {
 
     /// Log a message to the platefile log.
     virtual void log(std::string message);
-
-    // /// Returns a list of valid tiles at this level.
-    // virtual std::list<TileHeader> valid_tiles(int level, BBox2i const& region,
-    //                                           int start_transaction_id,
-    //                                           int end_transaction_id,
-    //                                           int min_num_matches) const;
-
-    // ----------------------- PROPERTIES  ----------------------
-
-    // /// Returns a list of tile headers for any valid tiles that exist
-    // /// at a the specified level and transaction_id.  The
-    // /// transaction_id is treated the same as it would be for
-    // /// read_request() above.  The region specifies a tile range of
-    // /// interest.
-    // virtual std::list<TileHeader> valid_tiles(int level, BBox2i const& region,
-    //                                           int begin_transaction_id,
-    //                                           int end_transaction_id,
-    //                                           int min_num_matches) const;
 
     virtual IndexHeader index_header() const;
 
@@ -162,17 +142,17 @@ namespace platefile {
 
     // Clients are expected to make a transaction request whenever
     // they start a self-contained chunk of mosaicking work.  .
-    virtual int32 transaction_request(std::string transaction_description,
-                                      int transaction_id_override);
+    virtual Transaction transaction_request(std::string transaction_description,
+                                            TransactionOrNeg transaction_id_override);
 
     // Once a chunk of work is complete, clients can "commit" their
     // work to the mosaic by issuding a transaction_complete method.
-    virtual void transaction_complete(int32 transaction_id, bool update_read_cursor);
+    virtual void transaction_complete(Transaction transaction_id, bool update_read_cursor);
 
     // If a transaction fails, we may need to clean up the mosaic.
-    virtual void transaction_failed(int32 transaction_id);
+    virtual void transaction_failed(Transaction transaction_id);
 
-    virtual int32 transaction_cursor();
+    virtual Transaction transaction_cursor();
 
   };
 

@@ -116,6 +116,9 @@ namespace vw {
     // features rely on rescaling.  Use at your own risk.
     static void set_default_rescale(bool rescale);
 
+    // TODO: This has always been the default, but it probably shouldn't be.
+    virtual void flush() {}
+
   protected:
     DiskImageResource( std::string const& filename ) : m_filename(filename), m_rescale(default_rescale) {}
     ImageFormat m_format;
@@ -123,6 +126,11 @@ namespace vw {
     bool m_rescale;
     static bool default_rescale;
   };
+
+  namespace fileio { namespace detail {
+    void noop_disk_deleter(DiskImageResource*);
+  }}
+
 
 
   // *******************************************************************
@@ -171,7 +179,7 @@ namespace vw {
       vw_out(InfoMessage, "fileio") << r->cols() << "x" << r->rows() << "x" << r->planes() << "  " << r->channels() << " channel(s)\n";
 
       if ( files > 1 ) {
-        write_image(*r, select_plane(out_image.impl(),p), SubProgressCallback(progress_callback,p/(float)files,(p+1)/(float)files));
+        write_image(*r, select_plane(out_image.impl(),p), SubProgressCallback(progress_callback,float(p)/float(files),float(p+1)/float(files)));
         progress_callback.report_finished();
       } else {
         write_image(*r, select_plane(out_image.impl(),p), progress_callback);

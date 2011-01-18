@@ -5,11 +5,13 @@
 // __END_LICENSE__
 
 
-// TestImageView.h
 #include <gtest/gtest.h>
+#include <test/Helpers.h>
 
 #include <vw/Image/ImageView.h>
+#include <vw/Image/ViewImageResource.h>
 #include <vw/Image/PixelTypes.h>
+#include <vw/Image/ImageIO.h>
 
 using namespace vw;
 
@@ -103,6 +105,9 @@ TEST( ImageView, SetSize ) {
   EXPECT_EQ(test_rgba.cols(), 0);
   EXPECT_EQ(test_rgba.rows(), 0);
   ASSERT_EQ(test_rgba.data(), (PixelRGBA<vw::uint8>*)0);
+
+  EXPECT_THROW(test_rgba.set_size(0,-1), ArgumentErr);
+  EXPECT_THROW(test_rgba.set_size(0,std::numeric_limits<int32>::max()), ArgumentErr);
 }
 
 TEST( ImageView, Reset ) {
@@ -286,4 +291,28 @@ TEST( ImageView, BoundsCheck ) {
   acc.next_row();
   ASSERT_ANY_THROW ( test = *acc );
 #endif
+}
+
+TEST(ImageView, ViewImageResource) {
+  typedef PixelRGB<uint8> Pixel;
+  ImageView<Pixel> img1(2,2);
+  img1(0,0) = Pixel(1,2,3);
+  img1(0,1) = Pixel(5,6,7);
+  img1(1,0) = Pixel(9,10,11);
+  img1(1,1) = Pixel(13,14,15);
+
+  ViewImageResource view(img1);
+
+  ASSERT_EQ(img1.cols(),   view.cols());
+  ASSERT_EQ(img1.rows(),   view.rows());
+  ASSERT_EQ(img1.planes(), view.planes());
+
+  ImageView<Pixel> img2;
+  read_image(img2, view);
+
+  ASSERT_EQ(img1.cols(),   img2.cols());
+  ASSERT_EQ(img1.rows(),   img2.rows());
+  ASSERT_EQ(img1.planes(), img2.planes());
+
+  EXPECT_RANGE_EQ(img1.begin(), img1.end(), img2.begin(), img2.end());
 }

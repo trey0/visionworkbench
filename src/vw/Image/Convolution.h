@@ -37,13 +37,13 @@ namespace vw {
 
   template <class SrcAccessT, class KernelIterT>
   typename ProductType<typename SrcAccessT::pixel_type, typename std::iterator_traits<KernelIterT>::value_type>::type
-  inline correlate_1d_at_point( SrcAccessT const& src, KernelIterT const& kernel, int32 n ) {
+  inline correlate_1d_at_point( SrcAccessT const& src, KernelIterT const& kernel, size_t n ) {
     typedef typename ProductType<typename SrcAccessT::pixel_type, typename std::iterator_traits<KernelIterT>::value_type>::type result_type;
     result_type result = result_type();
     validate(result);
     SrcAccessT s = src;
     KernelIterT k = kernel;
-    for( int32 i=n; i; --i ) {
+    for( ssize_t i=n; i; --i ) {
       result += (*k)*(*s);
       s.next_col();
       ++k;
@@ -53,17 +53,17 @@ namespace vw {
 
   template <class SrcAccessT, class KernelAccessT>
   typename ProductType<typename SrcAccessT::pixel_type, typename KernelAccessT::pixel_type>::type
-  inline correlate_2d_at_point( SrcAccessT const& src, KernelAccessT const& kernel, int32 cols, int32 rows ) {
+  inline correlate_2d_at_point( SrcAccessT const& src, KernelAccessT const& kernel, size_t cols, size_t rows ) {
     typedef typename ProductType<typename SrcAccessT::pixel_type, typename KernelAccessT::pixel_type>::type result_type;
 
     result_type result = result_type();
     validate(result);
     SrcAccessT srow = src;
     KernelAccessT krow = kernel;
-    for( int32 j=rows; j; --j ) {
+    for( ssize_t j=rows; j; --j ) {
       SrcAccessT scol = srow;
       KernelAccessT kcol = krow;
-      for( int32 i=cols; i; --i ) {
+      for( ssize_t i=cols; i; --i ) {
         result += (*kcol)*(*scol);
         scol.next_col();
         kcol.next_col();
@@ -170,13 +170,13 @@ namespace vw {
   private:
     ImageT m_image;
     std::vector<KernelT> m_i_kernel, m_j_kernel;
-    int32 m_ci, m_cj;
+    size_t m_ci, m_cj;
     EdgeT m_edge;
     mutable ImageView<KernelT> m_kernel2d;
 
     void generate2DKernel() const {
-      int32 ni = m_i_kernel.size() ? m_i_kernel.size() : 1;
-      int32 nj = m_j_kernel.size() ? m_j_kernel.size() : 1;
+      int32 ni = m_i_kernel.size() ? int32(m_i_kernel.size()) : 1;
+      int32 nj = m_j_kernel.size() ? int32(m_j_kernel.size()) : 1;
       m_kernel2d.set_size( ni, nj );
       for( int32 i=0; i<ni; ++i )
         for( int32 j=0; j<nj; ++j )
@@ -217,8 +217,8 @@ namespace vw {
     inline result_type operator()( int32 x, int32 y, int32 p=0 ) const {
       typedef typename CompoundChannelType<result_type>::type channel_type;
       if( m_kernel2d.cols()==0 ) generate2DKernel();
-      int32 ci = m_i_kernel.size() ? (m_i_kernel.size()-1-m_ci) : 0;
-      int32 cj = m_j_kernel.size() ? (m_j_kernel.size()-1-m_cj) : 0;
+      int32 ci = m_i_kernel.size() ? int32(m_i_kernel.size()-1-m_ci) : 0;
+      int32 cj = m_j_kernel.size() ? int32(m_j_kernel.size()-1-m_cj) : 0;
       if( (x >= int(ci)) && (y >= int(cj)) &&
           (x <= int(m_image.cols())-int(m_kernel2d.cols())+int(ci)) &&
           (y <= int(m_image.rows())-int(m_kernel2d.rows())+int(cj)) ) {
@@ -256,13 +256,13 @@ namespace vw {
     // operation than a single extra copy.
     template <class DestT>
     void rasterize( DestT const& dest, BBox2i bbox ) const {
-      int32 ni = m_i_kernel.size(), nj = m_j_kernel.size();
+      size_t ni = m_i_kernel.size(), nj = m_j_kernel.size();
       if( ni==0 && nj==0 ) {
         return edge_extend(m_image,m_edge).rasterize(dest,bbox);
       }
       BBox2i child_bbox = bbox;
-      child_bbox.min() -= Vector2i( ni?(ni-m_ci-1):0, nj?(nj-m_cj-1):0 );
-      child_bbox.max() += Vector2i( ni?m_ci:0, nj?m_cj:0 );
+      child_bbox.min() -= Vector2i( int32(ni?(ni-m_ci-1):0), int32(nj?(nj-m_cj-1):0) );
+      child_bbox.max() += Vector2i( int32(ni?m_ci:0), int32(nj?m_cj:0) );
       ImageView<typename ImageT::pixel_type> src_buf = edge_extend(m_image,child_bbox,m_edge);
       if( ni>0 && nj>0 ) {
         ImageView<pixel_type> work( bbox.width(), child_bbox.height(), planes() );

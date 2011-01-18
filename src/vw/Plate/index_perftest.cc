@@ -5,31 +5,35 @@
 // __END_LICENSE__
 
 
-#include <vw/Plate/AmqpConnection.h>
-#include <vw/Plate/RpcServices.h>
+#include <vw/Plate/Rpc.h>
 #include <vw/Plate/IndexService.h>
-#include <vw/Plate/common.h>
+#include <vw/Plate/HTTPUtils.h>
 #include <vw/Core/Stopwatch.h>
-#include <vw/Core/ThreadQueue.h>
-#include <csignal>
+#include  <iostream>
 
-using namespace vw;
-
-#include <boost/shared_ptr.hpp>
+#include <boost/scoped_ptr.hpp>
 #include <boost/program_options.hpp>
 namespace po = boost::program_options;
-using namespace vw::platefile;
-using namespace vw;
 
-// -----------------------------------------------------------------------------
-//                                  MAIN
-// -----------------------------------------------------------------------------
+using namespace vw;
+using namespace vw::platefile;
+
+const static size_t BATCH_SIZE = 5000;
+
+typedef RpcClient<IndexService> IndexClient;
+
+IndexClient* conn(const Url& url) {
+  std::cerr << "Connecting to index server at " << url.string() << std::endl;
+  return new IndexClient(url);
+}
 
 int main(int argc, char** argv) {
+  Url url;
 
   po::options_description general_options("AMQP Performance Test Program");
   general_options.add_options()
-    ("help", "Display this help message");
+    ("url,u", po::value(&url), "Run requests against this index url.")
+    ("help,h", "Display this help message");
 
   po::variables_map vm;
   po::store( po::command_line_parser( argc, argv ).options(general_options).run(), vm );
@@ -44,26 +48,26 @@ int main(int argc, char** argv) {
     return 0;
   }
 
-  std::string queue_name = "index_perftest_queue";
+  boost::scoped_ptr<IndexClient> client(conn(url));
 
-  boost::shared_ptr<AmqpConnection> conn(new AmqpConnection());
-  boost::shared_ptr<AmqpRpcClient> rpc_controller( new AmqpRpcClient(conn, DEV_INDEX,
-                                                                     queue_name, "index") );
-  boost::shared_ptr<IndexService> index_service( new IndexService::Stub(rpc_controller.get() ) );
-  rpc_controller->bind_service(index_service, queue_name);
+  uint64 t0, t1;
 
-  int32 i = 0;
   while (1) {
-    IndexTestRequest request;
-    request.set_value(i);
+    t0 = Stopwatch::microtime();
 
-    IndexTestReply response;
-    index_service->TestRequest(rpc_controller.get(), &request, &response, null_callback());
+    for (size_t i = 0; i < BATCH_SIZE; i++) {
+      IndexTestRequest request;
+      request.set_value(i);
 
-    if (i != response.value())
-      std::cout << "Error: IndexTestMessage failed!\n";
+      IndexTestReply response;
+      client->TestRequest(client.get(), &request, &response, null_callback());
 
-    ++i;
+      if (i != response.value())
+        std::cerr << "Error: IndexTestMessage failed!\n";
+    }
+
+    t1 = Stopwatch::microtime();
+    std::cout << 1000000. * float(BATCH_SIZE) / float(t1-t0) << " msg/s" << std::endl;
   }
 }
 

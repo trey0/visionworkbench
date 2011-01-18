@@ -166,10 +166,10 @@ namespace mosaic {
     class AlphaGenerator {
     public:
       ImageComposite& m_composite;
-      int m_index;
+      size_t m_index;
     public:
       typedef ImageView<channel_type> value_type;
-      AlphaGenerator( ImageComposite& composite, int index ) : m_composite(composite), m_index(index) {}
+      AlphaGenerator( ImageComposite& composite, size_t index ) : m_composite(composite), m_index(index) {}
       size_t size() const {
         return m_composite.sources[m_index].size() / PixelNumChannels<pixel_type>::value;
       }
@@ -183,12 +183,12 @@ namespace mosaic {
     class PyramidGenerator {
     public:
       ImageComposite& m_composite;
-      int m_index;
+      size_t m_index;
     public:
       typedef Pyramid value_type;
-      PyramidGenerator( ImageComposite& composite, int index ) : m_composite(composite), m_index(index) {}
+      PyramidGenerator( ImageComposite& composite, size_t index ) : m_composite(composite), m_index(index) {}
       size_t size() const {
-        return size_t( m_composite.sources[m_index].size() * 1.66 ); // 1.66 = (5/4)*(4/3)
+        return size_t( double(m_composite.sources[m_index].size()) * 1.66 ); // 1.66 = (5/4)*(4/3)
       }
       boost::shared_ptr<value_type> generate() const;
     };
@@ -339,13 +339,13 @@ void vw::mosaic::ImageComposite<PixelT>::generate_masks( vw::ProgressCallback co
           }
         }
       }
-      progress_callback.report_fractional_progress( p1*(sources.size()+1)+p2+1, (sources.size()+1)*sources.size() );
+      progress_callback.report_fractional_progress( double(p1*(sources.size()+1)+p2+1), double((sources.size()+1)*sources.size()) );
     }
     mask = threshold( mask );
     std::ostringstream filename;
     filename << "mask." << p1 << ".png";
     write_image( filename.str(), mask );
-    progress_callback.report_fractional_progress( (p1+1)*(sources.size()+1), (sources.size()+1)*sources.size() );
+    progress_callback.report_fractional_progress( double((p1+1)*(sources.size()+1)), double((sources.size()+1)*sources.size()) );
   }
   // report_finished() called by prepare(), so don't call it here
 }
@@ -391,11 +391,11 @@ boost::shared_ptr<typename vw::mosaic::ImageComposite<PixelT>::Pyramid> vw::mosa
 
 template <class PixelT>
 void vw::mosaic::ImageComposite<PixelT>::insert( ImageViewRef<pixel_type> const& image, int x, int y ) {
-  vw_out(VerboseDebugMessage, "mosaic") << "ImageComposite inserting image " << pyramids.size() << std::endl;
   sourcerefs.push_back( image );
   sources.push_back( m_cache.insert( SourceGenerator( image ) ) );
   alphas.push_back( m_cache.insert( AlphaGenerator( *this, pyramids.size() ) ) );
   pyramids.push_back( m_cache.insert( PyramidGenerator( *this, pyramids.size() ) ) );
+
   int cols = image.cols(), rows = image.rows();
   BBox2i image_bbox( Vector2i(x, y), Vector2i(x+cols, y+rows) );
   bboxes.push_back( image_bbox );
@@ -419,7 +419,7 @@ void vw::mosaic::ImageComposite<PixelT>::prepare( vw::ProgressCallback const& pr
     bboxes[i] -= view_bbox.min();
   data_bbox -= view_bbox.min();
 
-  levels = (int) floorf( log( mindim/2.0 ) / log(2.0) ) - 1;
+  levels = (int) floorf( logf( float(mindim)/2.0f ) / logf(2.0f) ) - 1;
   if( levels < 1 ) levels = 1;
 
   if( !m_draft_mode && !m_reuse_masks ) {

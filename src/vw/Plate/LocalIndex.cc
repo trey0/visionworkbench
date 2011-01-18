@@ -173,9 +173,6 @@ std::vector<std::string> LocalIndex::blob_filenames() const {
 
 void LocalIndex::save_index_file() const {
 
-  // First, check to make sure the platefile directory exists.
-  if ( !fs::exists( m_plate_filename ) )
-    fs::create_directory(m_plate_filename);
   std::ofstream ofstr( this->index_filename().c_str() );
   if (!ofstr.is_open())
     vw_throw(IOErr() << "LocalIndex::save_index_file() -- Could not create index file for writing.");
@@ -188,24 +185,35 @@ void LocalIndex::save_index_file() const {
 
  // ------------------------ Public Methods --------------------------
 
- /// Create a new index.  User supplies a pre-configure blob manager.
- LocalIndex::LocalIndex( std::string plate_filename, IndexHeader new_index_info) :
-   PagedIndex(boost::shared_ptr<PageGeneratorFactory>( new LocalPageGeneratorFactory(plate_filename) ),
-              new_index_info),  // superclass constructor
-   m_plate_filename(plate_filename),
-   m_blob_manager(boost::shared_ptr<BlobManager>( new BlobManager() )) {
+ /// Create a new index.
+ LocalIndex::LocalIndex( std::string plate_filename, IndexHeader new_index_info)
+  : PagedIndex(boost::shared_ptr<PageGeneratorFactory>( new LocalPageGeneratorFactory(plate_filename) ), new_index_info),
+   m_plate_filename(plate_filename), m_blob_manager(boost::shared_ptr<BlobManager>( new BlobManager() ))
+{
+   // Create subdirectory for storing hard copies of index pages.
+   std::string base_index_path = plate_filename + "/index";
+   VW_ASSERT(!fs::exists(base_index_path), ArgumentErr() << "Attempted to create new LocalIndex over existing index");
+   fs::create_directories(base_index_path);
 
    // Start with the new_index_info, which provides the tile size, file
    // type, pixel and channel types, etc.  Then we augment it with a
    // few things to help track the new platefile.
    m_header = new_index_info;
 
+   // Check to make sure we've selected a sane file type
+   if (m_header.channel_type() == VW_CHANNEL_FLOAT32) {
+     if (m_header.tile_filetype() == "png" || m_header.tile_filetype() == "jpg")
+       vw_out(WarningMessage, "plate")
+         << "Constructing 32-bit floating point platefile with a non-32-bit file-type ("
+         << m_header.tile_filetype() << ").\n";
+   }
+
    // Create a unique (random) platefile_id using the random()
    // function.  It would probably be better to use some sort of fancy
    // MD5 hash of the current time and date, or something like that,
    // but little 'ol random() will probably work just fine for our
    // humble purposes.
-   srandom(time(0));
+   srandom(boost::numeric_cast<unsigned int>(clock()));
    m_header.set_platefile_id(vw::int32(random()));
 
    // Set up the IndexHeader and write it to disk.
@@ -214,11 +222,6 @@ void LocalIndex::save_index_file() const {
    m_header.set_transaction_write_cursor(1);  // Transaction 1 is the first valid transaction
    m_header.set_num_levels(0);                // Index initially contains zero levels
    this->save_index_file();
-
-   // Create subdirectory for storing hard copies of index pages.
-   std::string base_index_path = plate_filename + "/index";
-   if (!fs::exists(base_index_path))
-     fs::create_directory(base_index_path);
 
    // Create the logging facility
    m_log = boost::shared_ptr<LogInstance>( new LogInstance(this->log_filename()) );
@@ -288,21 +291,20 @@ void LocalIndex::log(std::string message) {
 
 // Clients are expected to make a transaction request whenever
 // they start a self-contained chunk of mosaicking work.  .
-int32 LocalIndex::transaction_request(std::string transaction_description,
-                                                     int transaction_id_override) {
+Transaction LocalIndex::transaction_request(std::string transaction_description,
+                                            TransactionOrNeg transaction_id_override_neg) {
 
-   if (transaction_id_override != -1) {
-
+   if (transaction_id_override_neg != -1) {
+     Transaction transaction_id_override = transaction_id_override_neg.promote();
      // If the user has chosen to override the transaction ID's, then we
      // use the transaction ID they specify.  We also increment the
      // transaction_write_cursor if necessary so that we dole out a
      // reasonable transaction ID if we are ever asked again without an
      // override.
-     int max_trans_id = std::max(m_header.transaction_write_cursor(), transaction_id_override+1);
+     Transaction max_trans_id = std::max(m_header.transaction_write_cursor(), transaction_id_override+1);
      m_header.set_transaction_write_cursor(max_trans_id);
      this->save_index_file();
-     this->log() << "Transaction " << transaction_id_override
-                 << " started: " << transaction_description << "\n";
+     this->log() << "Transaction " << transaction_id_override << " started: " << transaction_description << "\n";
      return transaction_id_override;
 
    } else {
@@ -311,7 +313,7 @@ int32 LocalIndex::transaction_request(std::string transaction_description,
      // the cursor to a file.  (Saving to a file gurantees that we won't
      // accidentally assign two transactions the same ID if the index
      // server crashes and has to be restarted.
-     int32 transaction_id = m_header.transaction_write_cursor();
+     Transaction transaction_id = m_header.transaction_write_cursor();
      m_header.set_transaction_write_cursor(m_header.transaction_write_cursor() + 1);
      this->save_index_file();
      this->log() << "Transaction " << transaction_id << " started: " << transaction_description << "\n";
@@ -322,13 +324,13 @@ int32 LocalIndex::transaction_request(std::string transaction_description,
 
  // Once a chunk of work is complete, clients can "commit" their
  // work to the mosaic by issuing a transaction_complete method.
- void LocalIndex::transaction_complete(int32 transaction_id, bool update_read_cursor) {
+ void LocalIndex::transaction_complete(Transaction transaction_id, bool update_read_cursor) {
 
    // First we save (sync) the index pages to disk
    //this->sync();
 
    if ( update_read_cursor ) {
-     int max_trans_id = std::max(m_header.transaction_read_cursor(), transaction_id);
+     Transaction max_trans_id = std::max(m_header.transaction_read_cursor(), transaction_id+0);
      m_header.set_transaction_read_cursor(max_trans_id);
      this->save_index_file();
    }
@@ -339,7 +341,7 @@ int32 LocalIndex::transaction_request(std::string transaction_description,
 
  // Once a chunk of work is complete, clients can "commit" their
  // work to the mosaic by issuing a transaction_complete method.
- void LocalIndex::transaction_failed(int32 transaction_id) {
+ void LocalIndex::transaction_failed(Transaction transaction_id) {
 
    // Log the failure.
    this->log() << "Transaction " << transaction_id << " FAILED.\n";
@@ -349,7 +351,7 @@ int32 LocalIndex::transaction_request(std::string transaction_description,
  // Return the current location of the transaction cursor.  This
  // will be the last transaction id that refers to a coherent
  // version of the mosaic.
- int32 LocalIndex::transaction_cursor() {
+ Transaction LocalIndex::transaction_cursor() {
    return m_header.transaction_read_cursor();
  }
 
@@ -384,7 +386,7 @@ int32 LocalIndex::transaction_request(std::string transaction_description,
        rec.set_blob_offset(iter.current_base_offset());
        rec.set_filetype(hdr.filetype());
        this->write_update(hdr, rec);
-       tpc.report_progress(float(iter.current_base_offset()) / blob.size());
+       tpc.report_progress(float(iter.current_base_offset()) / float(blob.size()));
        ++iter;
     }
     tpc.report_finished();
@@ -402,15 +404,15 @@ int LocalIndex::write_request(uint64 &size) {
 void LocalIndex::write_update(TileHeader const& header, IndexRecord const& record) {
 
   // Store the number of tiles that are contained in the mosaic.
-  int starting_size = m_levels.size();
+  size_t starting_size = m_levels.size();
 
   // Write the update to the PagedIndex superclass.
   PagedIndex::write_update(header, record);
 
   // If adding the record resulted in more levels, we save that
   // information to the index header.
-  if (int(m_levels.size()) != starting_size) {
-    m_header.set_num_levels(m_levels.size());
+  if (m_levels.size() != starting_size) {
+    m_header.set_num_levels(boost::numeric_cast<int32>(m_levels.size()));
     this->save_index_file();
   }
 }

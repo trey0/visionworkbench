@@ -81,7 +81,7 @@ int vw::platefile::BlobManager::get_next_available_blob() {
   } else {
     BlobCacheRecord rec;
     m_blob_locks.push_back(rec);
-    return m_blob_locks.size() - 1;
+    return boost::numeric_cast<int>(m_blob_locks.size()) - 1;
   }
 }
 
@@ -104,10 +104,10 @@ vw::platefile::BlobManager::BlobManager(uint64 max_blob_size, int initial_nblobs
 /// Return the number of blobs currently in use.
 unsigned vw::platefile::BlobManager::num_blobs() {
   Mutex::Lock lock(m_mutex);
-  return m_blob_locks.size();
+  return boost::numeric_cast<unsigned>(m_blob_locks.size());
 }
 
-vw::int64 vw::platefile::BlobManager::max_blob_size() {
+vw::uint64 vw::platefile::BlobManager::max_blob_size() {
   Mutex::Lock lock(m_mutex);
   return m_max_blob_size;
 }

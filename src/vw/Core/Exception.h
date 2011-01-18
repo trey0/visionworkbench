@@ -116,21 +116,18 @@ namespace vw {
     /// The default constructor generates exceptions with empty error
     /// message text.  This is the cleanest approach if you intend to
     /// use streaming (via operator <<) to generate your message.
-    Exception() VW_IF_EXCEPTIONS(throw()) {}
+    Exception() VW_NOTHROW {}
 
-    /// Generates exceptions with the given error message text.
-    Exception( std::string const& s ) VW_IF_EXCEPTIONS(throw()) { m_desc << s; }
-
-    virtual ~Exception() VW_IF_EXCEPTIONS(throw()) {}
+    virtual ~Exception() VW_NOTHROW {}
 
     /// Copy Constructor
-    Exception( Exception const& e ) VW_IF_EXCEPTIONS(throw())
+    Exception( Exception const& e ) VW_NOTHROW
       VW_IF_EXCEPTIONS( : std::exception(e) ) {
       m_desc << e.m_desc.str();
     }
 
     /// Assignment operator copies the error string.
-    Exception& operator=( Exception const& e ) VW_IF_EXCEPTIONS(throw()) {
+    Exception& operator=( Exception const& e ) VW_NOTHROW {
       m_desc.str( e.m_desc.str() );
       return *this;
     }
@@ -139,7 +136,7 @@ namespace vw {
     /// returned pointer must be used immediately; other operations on
     /// the exception may invalidate it.  If you need the data for
     /// later, you must save it to a local buffer of your own.
-    virtual const char* what() const VW_IF_EXCEPTIONS(throw()) {
+    virtual const char* what() const VW_NOTHROW {
       m_what_buf = m_desc.str();
       return m_what_buf.c_str();
     }
@@ -150,9 +147,15 @@ namespace vw {
     /// Returns a string version of this exception's type.
     virtual std::string name() const { return "Exception"; }
 
+    void set( std::string const& s ) { m_desc.str(s); }
+    void reset() { m_desc.str(""); }
+
     VW_IF_EXCEPTIONS( virtual void default_throw() const { throw *this; } )
 
   protected:
+      virtual std::ostringstream& stream() {return m_desc;}
+
+  private:
     // The error message text.
     std::ostringstream m_desc;
 
@@ -181,42 +184,31 @@ namespace vw {
   // generate error message text.  This is currently implemented
   // by simply forwarding invocations of this method to an
   // internal ostringstream.
-  //
-  // Exception::set():
-  // Sets the error message text to the provided string, returning a
-  // reference to the exception for use with the streaming operator
-  // (<<) if desired.
-  //
-  // Exception::reset():
-  // Resets (i.e. clears) the error message text, returning a
-  // reference to the exception for use with the streaming operator
-  // (<<) if desired
 
   /// Macro for quickly creating a hierarchy of exceptions, all of
   /// which share the same functionality.
-  #define VW_DEFINE_EXCEPTION(exception_type,base)                                          \
-  struct exception_type : public base {                                                     \
-    exception_type() VW_IF_EXCEPTIONS(throw()) : base() {}                                  \
-    exception_type(std::string const& s) VW_IF_EXCEPTIONS(throw()) : base(s) {}             \
-    exception_type( exception_type const& e ) VW_IF_EXCEPTIONS(throw()) : base( e ) {}      \
-    virtual ~exception_type() VW_IF_EXCEPTIONS(throw()) {}                                  \
-                                                                                            \
-    virtual std::string name() const { return #exception_type; }                            \
-                                                                                            \
-    inline exception_type& operator=( exception_type const& e ) VW_IF_EXCEPTIONS(throw()) { \
-      base::operator=( e );                                                                 \
-      return *this;                                                                         \
-    }                                                                                       \
-                                                                                            \
-    template <class T>                                                                      \
-    exception_type& operator<<( T const& t ) { m_desc << t; return *this; }                 \
-                                                                                            \
-    exception_type& set( std::string const& s ) { m_desc.str(s);  return *this; }           \
-                                                                                            \
-    exception_type& reset() { m_desc.str("");  return *this; }                              \
-                                                                                            \
-    VW_IF_EXCEPTIONS(virtual void default_throw() const { throw *this; })                   \
-  }
+  #define VW_DEFINE_EXCEPTION(exception_type,base)                             \
+    struct exception_type : public base {                                      \
+      VW_EXCEPTION_API(exception_type)                                         \
+    }
+
+  // This sentinel catches users who forget to use VW_EXCEPTION_API
+  #define _VW_EXCEPTION_SENTINEL(e) _YouForgot_VW_EXCEPTION_API_OnException_ ## e
+
+  // Macro for creating a hierarchy of exceptions that may have additional
+  // functions or data. When using this macro, you must include the
+  // VW_EXCEPTION_API macro inside the braces
+  #define VW_DEFINE_EXCEPTION_EXT(exception_type,base)                         \
+    struct _VW_EXCEPTION_SENTINEL(exception_type) : public base {              \
+      virtual std::string name() const = 0;                                    \
+    };                                                                         \
+    struct exception_type : public _VW_EXCEPTION_SENTINEL(exception_type)
+
+  #define VW_EXCEPTION_API(exception_type)                                     \
+    virtual std::string name() const { return #exception_type; }               \
+    VW_IF_EXCEPTIONS( virtual void default_throw() const { throw *this; } )    \
+    template <class T>                                                         \
+    exception_type& operator<<( T const& t ) { stream() << t; return *this; }
 
   /// Invalid function argument exception
   VW_DEFINE_EXCEPTION(ArgumentErr, Exception);
@@ -253,8 +245,8 @@ namespace vw {
   /// can subclass to install an alternative exception handler.
   class ExceptionHandler {
   public:
-    virtual void handle( Exception const& e ) const = 0;
-    virtual ~ExceptionHandler() {}
+    virtual void handle( Exception const& e ) const VW_NORETURN = 0;
+    virtual ~ExceptionHandler() VW_NOTHROW {}
   };
 
   /// Sets the application-wide exception handler.  Pass zero
@@ -277,13 +269,13 @@ namespace vw {
 /// condition is not met.  The VW_DEBUG_ASSERT macro does the same
 /// thing, but is disabled if VW_DEBUG_LEVEL is zero.  The default
 /// value for VW_DEBUG_LEVEL is defined in Debugging.h.
-#define VW_ASSERT(cond,excep) do { if(!(cond)) vw_throw( excep ); } while(0)
-#define VW_LINE_ASSERT(cond) do { if(!(cond)) vw_throw( vw::LogicErr() << "Assertion failed (" << __FILE__ << ":" << __LINE__ << "): " << #cond); } while(0)
+#define VW_ASSERT(cond,excep) do { if(!(cond)) vw::vw_throw( excep ); } while(0)
+#define VW_LINE_ASSERT(cond) do { if(!(cond)) vw::vw_throw( vw::LogicErr() << "Assertion failed (" << __FILE__ << ":" << __LINE__ << "): " << #cond); } while(0)
 #if VW_DEBUG_LEVEL == 0
 #define VW_DEBUG_ASSERT(cond,excep) do {} while(0)
 #else
 // Duplicate the definition to avoid extra macro expansion in recusion
-#define VW_DEBUG_ASSERT(cond,excep) do { if(!(cond)) vw_throw( excep ); } while(0)
+#define VW_DEBUG_ASSERT(cond,excep) do { if(!(cond)) vw::vw_throw( excep ); } while(0)
 #endif
 
 #endif // __VW_CORE_EXCEPTION_H__

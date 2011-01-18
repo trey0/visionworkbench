@@ -11,8 +11,10 @@
 
 #include <vw/Image.h>
 #include <vw/FileIO.h>
+#include <vw/Math.h>
 #include <vw/Plate/PlateView.h>
 #include <vw/Plate/PlateCarreePlateManager.h>
+#include <vw/Cartography/GeoReference.h>
 
 using namespace vw;
 using namespace vw::platefile;
@@ -177,7 +179,7 @@ void do_tiles(boost::shared_ptr<PlateFile> platefile, Options& opt) {
       ImageViewRef<typename CompoundChannelCast<typename PixelWithoutAlpha<PixelT>::type ,int16>::type > dem_image = apply_mask(alpha_to_mask(channel_cast<int16>(cropped_view)),-32767);
       DiskImageResourceGDAL rsrc(output_filename.str(), dem_image.format(),
                                  Vector2i(256,256), gdal_options);
-      rsrc.set_nodata_value( -32767 );
+      rsrc.set_nodata_write( -32767 );
       write_georeference(rsrc, tile_georef);
       write_image(rsrc, dem_image,
                   TerminalProgressCallback( "plate.tools", "\t    Writing: "));
@@ -185,7 +187,7 @@ void do_tiles(boost::shared_ptr<PlateFile> platefile, Options& opt) {
       ImageViewRef<typename CompoundChannelCast<typename PixelWithoutAlpha<PixelT>::type ,uint8>::type > dem_image = convert_to_pds_imagery( cropped_view );
       DiskImageResourceGDAL rsrc(output_filename.str(), dem_image.format(),
                                  Vector2i(256,256), gdal_options);
-      rsrc.set_nodata_value( 0 );
+      rsrc.set_nodata_write( 0 );
       write_georeference(rsrc, tile_georef);
       write_image(rsrc, dem_image,
                   TerminalProgressCallback( "plate.tools", "\t    Writing: "));
@@ -215,7 +217,7 @@ void handle_arguments( int argc, char *argv[], Options& opt ) {
     ("output-datum", po::value(&opt.output_datum)->default_value("WGS84"), "Specify the output datum to use, [WGS84, WGS72, D_MOON, D_MARS]")
     ("export-pds-dem", "Export using int16 channel value with a -32767 nodata value")
     ("export-pds-imagery", "Export using uint8 channel value with a 0 nodata value")
-    ("help", "Display this help message");
+    ("help,h", "Display this help message");
 
   po::options_description positional("");
   positional.add_options()
@@ -250,8 +252,8 @@ void handle_arguments( int argc, char *argv[], Options& opt ) {
 
   if( opt.output_prefix == "" ) {
     opt.output_prefix = fs::path(opt.plate_file_name).stem();
-    int indx = opt.output_prefix.rfind("/");
-    if ( indx > 0 )
+    size_t indx = opt.output_prefix.rfind("/");
+    if ( indx != std::string::npos )
       opt.output_prefix = opt.output_prefix.substr(indx+1);
   }
 }
@@ -262,7 +264,8 @@ int main( int argc, char *argv[] ) {
   try {
     handle_arguments( argc, argv, opt );
 
-    boost::shared_ptr<PlateFile> platefile(new PlateFile(opt.plate_file_name));
+    // XXX: should make plate_file_name a Url
+    boost::shared_ptr<PlateFile> platefile(new PlateFile(Url(opt.plate_file_name)));
 
     std::cout << "Opened " << opt.plate_file_name << ".     Depth: "
               << platefile->num_levels() << " levels.\n";

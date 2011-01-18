@@ -39,17 +39,7 @@ typedef struct _stat struct_stat;
 typedef struct stat struct_stat;
 #endif
 
-namespace {
-
-  // ---------------------------------------------------
-  // Create a single instance of the Settings class
-  // ---------------------------------------------------
-  vw::RunOnce settings_once = VW_RUNONCE_INIT;
-  boost::shared_ptr<vw::Settings> system_settings_ptr;
-  void init_system_settings() {
-    system_settings_ptr = boost::shared_ptr<vw::Settings>(new vw::Settings());
-  }
-}
+namespace vw {
 
 // ---------------------------------------------------
 // Settings Methods
@@ -58,7 +48,7 @@ namespace {
 // Every m_rc_poll_period seconds, this method polls the
 // m_rc_filename to see if it exists and to see if it has been
 // recently modified.  If so, we reload the log ruleset from the file.
-void vw::Settings::reload_config() {
+void Settings::reload_config() {
 
 #if VW_ENABLE_CONFIG_FILE
 
@@ -104,7 +94,7 @@ void vw::Settings::reload_config() {
 #endif
 }
 
-void vw::Settings::set_rc_filename(std::string filename) {
+void Settings::set_rc_filename(std::string filename) {
 
   // limit the scope of the lock
   {
@@ -135,7 +125,7 @@ void vw::Settings::set_rc_filename(std::string filename) {
   reload_config();
 }
 
-void vw::Settings::set_rc_poll_period(double period) {
+void Settings::set_rc_poll_period(double period) {
 
   // limit the scope of the lock
   {
@@ -147,7 +137,7 @@ void vw::Settings::set_rc_poll_period(double period) {
   reload_config();
 }
 
-vw::Settings::Settings() : m_rc_last_polltime(0),
+Settings::Settings() : m_rc_last_polltime(0),
                            m_rc_last_modification(0),
                            m_rc_poll_period(5.0) {
   std::string homedir;
@@ -164,7 +154,7 @@ vw::Settings::Settings() : m_rc_last_polltime(0),
   m_default_num_threads = VW_NUM_THREADS;
   m_system_cache_size = 768 * 1024 * 1024; // Default cache size is 768-MB
   m_write_pool_size  = 21;                 // Default pool size is 21 threads. About 252-MB for RGB f32 1024^2
-  m_default_tile_size = 1024;
+  m_default_tile_size = 256;
   m_tmp_directory = "/tmp";
 
   // By default, the .vwrc file has precedence, but the user can
@@ -177,24 +167,18 @@ vw::Settings::Settings() : m_rc_last_polltime(0),
   m_write_pool_size_override = false;
 }
 
-vw::Settings& vw::vw_settings() {
-  settings_once.run( init_system_settings );
-  return *system_settings_ptr;
-}
-
-
 // -----------------------------------------------------------------
 //                        Settings API
 // -----------------------------------------------------------------
 
-vw::uint32 vw::Settings::default_num_threads() {
+uint32 Settings::default_num_threads() {
   if (!m_default_num_threads_override)
     reload_config();
   Mutex::Lock lock(m_settings_mutex);
   return m_default_num_threads;
 }
 
-void vw::Settings::set_default_num_threads(unsigned num) {
+void Settings::set_default_num_threads(unsigned num) {
 
   { // Used to contain the lock from reload_config()
     Mutex::Lock lock(m_settings_mutex);
@@ -212,14 +196,14 @@ void vw::Settings::set_default_num_threads(unsigned num) {
     reload_config();
 }
 
-size_t vw::Settings::system_cache_size() {
+size_t Settings::system_cache_size() {
   if (!m_system_cache_size_override)
     reload_config();
   Mutex::Lock lock(m_settings_mutex);
   return m_system_cache_size;
 }
 
-void vw::Settings::set_system_cache_size(size_t size) {
+void Settings::set_system_cache_size(size_t size) {
   {
     Mutex::Lock lock(m_settings_mutex);
     m_system_cache_size_override = true;
@@ -228,14 +212,14 @@ void vw::Settings::set_system_cache_size(size_t size) {
   vw_system_cache().resize(size);
 }
 
-vw::uint32 vw::Settings::write_pool_size() {
+uint32 Settings::write_pool_size() {
   if (!m_write_pool_size_override)
     reload_config();
   Mutex::Lock lock(m_settings_mutex);
   return m_write_pool_size;
 }
 
-void vw::Settings::set_write_pool_size(vw::uint32 size) {
+void Settings::set_write_pool_size(uint32 size) {
   {
     Mutex::Lock lock(m_settings_mutex);
     m_write_pool_size_override = true;
@@ -243,28 +227,30 @@ void vw::Settings::set_write_pool_size(vw::uint32 size) {
   }
 }
 
-vw::uint32 vw::Settings::default_tile_size() {
+uint32 Settings::default_tile_size() {
   if (!m_default_tile_size_override)
     reload_config();
   Mutex::Lock lock(m_settings_mutex);
   return m_default_tile_size;
 }
 
-void vw::Settings::set_default_tile_size(vw::uint32 num) {
+void Settings::set_default_tile_size(uint32 num) {
   Mutex::Lock lock(m_settings_mutex);
   m_default_tile_size_override = true;
   m_default_tile_size = num;
 }
 
-std::string vw::Settings::tmp_directory() {
+std::string Settings::tmp_directory() {
   if (!m_tmp_directory_override)
     reload_config();
   Mutex::Lock lock(m_settings_mutex);
   return m_tmp_directory;
 }
 
-void vw::Settings::set_tmp_directory(std::string const& path) {
+void Settings::set_tmp_directory(std::string const& path) {
   Mutex::Lock lock(m_settings_mutex);
   m_tmp_directory_override = true;
   m_tmp_directory = path;
 }
+
+} // namespace vw

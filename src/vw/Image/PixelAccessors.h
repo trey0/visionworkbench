@@ -45,19 +45,20 @@ namespace vw {
     int32 m_num_pixels;
 #endif
     PixelT *m_ptr;
-    ptrdiff_t m_cstride, m_rstride, m_pstride;
+    ssize_t m_cstride, m_rstride, m_pstride;
   public:
     typedef PixelT pixel_type;
     typedef PixelT& result_type;
+    typedef ssize_t offset_type;
 
 #if defined(VW_ENABLE_BOUNDS_CHECK) && (VW_ENABLE_BOUNDS_CHECK==1)
     MemoryStridingPixelAccessor( PixelT *ptr,
-                                 ptrdiff_t cstride, ptrdiff_t rstride, ptrdiff_t pstride,
+                                 ssize_t cstride, ssize_t rstride, ssize_t pstride,
                                  int32 cols, int32 rows, int32 planes)
       : m_base_ptr(ptr), m_num_pixels(cols * rows * planes),
         m_ptr(ptr), m_cstride(cstride), m_rstride(rstride), m_pstride(pstride) {}
 #else
-    MemoryStridingPixelAccessor( PixelT *ptr, ptrdiff_t cstride, ptrdiff_t rstride, ptrdiff_t pstride )
+    MemoryStridingPixelAccessor( PixelT *ptr, ssize_t cstride, ssize_t rstride, ssize_t pstride )
       : m_ptr(ptr), m_cstride(cstride), m_rstride(rstride), m_pstride(pstride) {
     }
 #endif
@@ -68,7 +69,7 @@ namespace vw {
     inline MemoryStridingPixelAccessor& prev_row()   { m_ptr -= m_rstride; return *this; }
     inline MemoryStridingPixelAccessor& next_plane() { m_ptr += m_pstride; return *this; }
     inline MemoryStridingPixelAccessor& prev_plane() { m_ptr -= m_pstride; return *this; }
-    inline MemoryStridingPixelAccessor& advance( ptrdiff_t dc, ptrdiff_t dr, ptrdiff_t dp=0 ) {
+    inline MemoryStridingPixelAccessor& advance( ssize_t dc, ssize_t dr, ssize_t dp=0 ) {
       m_ptr += dc*m_cstride + dr*m_rstride + dp*m_pstride;
       return *this;
     }
@@ -79,7 +80,7 @@ namespace vw {
     inline MemoryStridingPixelAccessor prev_row_copy()   const { MemoryStridingPixelAccessor tmp(*this); tmp.prev_row();   return tmp; }
     inline MemoryStridingPixelAccessor next_plane_copy() const { MemoryStridingPixelAccessor tmp(*this); tmp.next_plane(); return tmp; }
     inline MemoryStridingPixelAccessor prev_plane_copy() const { MemoryStridingPixelAccessor tmp(*this); tmp.prev_plane(); return tmp; }
-    inline MemoryStridingPixelAccessor advance_copy ( ptrdiff_t dc, ptrdiff_t dr, ptrdiff_t dp=0 ) const {
+    inline MemoryStridingPixelAccessor advance_copy ( ssize_t dc, ssize_t dr, ssize_t dp=0 ) const {
       MemoryStridingPixelAccessor tmp(*this);
       tmp.advance(dc,dr,dp);
       return tmp;
@@ -105,7 +106,9 @@ namespace vw {
   /// invokes the view's function operator when dereferenced.
   template <class ViewT>
   class ProceduralPixelAccessor {
+  public:
     typedef typename boost::mpl::if_<IsFloatingPointIndexable<ViewT>, double, int32>::type offset_type;
+  private:
     ViewT const& m_view;
     offset_type m_c, m_r;
     int32 m_p;
@@ -122,7 +125,7 @@ namespace vw {
     inline ProceduralPixelAccessor& prev_row() { --m_r; return *this; }
     inline ProceduralPixelAccessor& next_plane() { ++m_p; return *this; }
     inline ProceduralPixelAccessor& prev_plane() { --m_p; return *this; }
-    inline ProceduralPixelAccessor& advance( offset_type dc, offset_type dr, int32 dp=0 ) { m_c+=dc; m_r+=dr; m_p+=dp; return *this; }
+    inline ProceduralPixelAccessor& advance( offset_type dc, offset_type dr, ssize_t dp=0 ) { m_c+=dc; m_r+=dr; m_p+=(int32)dp; return *this; }
 
     inline ProceduralPixelAccessor next_col_copy()   const { ProceduralPixelAccessor tmp(*this); tmp.next_col();   return tmp; }
     inline ProceduralPixelAccessor prev_col_copy()   const { ProceduralPixelAccessor tmp(*this); tmp.prev_col();   return tmp; }
@@ -130,7 +133,7 @@ namespace vw {
     inline ProceduralPixelAccessor prev_row_copy()   const { ProceduralPixelAccessor tmp(*this); tmp.prev_row();   return tmp; }
     inline ProceduralPixelAccessor next_plane_copy() const { ProceduralPixelAccessor tmp(*this); tmp.next_plane(); return tmp; }
     inline ProceduralPixelAccessor prev_plane_copy() const { ProceduralPixelAccessor tmp(*this); tmp.prev_plane(); return tmp; }
-    inline ProceduralPixelAccessor advance_copy ( ptrdiff_t dc, ptrdiff_t dr, ptrdiff_t dp=0 ) const {
+    inline ProceduralPixelAccessor advance_copy ( offset_type dc, offset_type dr, ssize_t dp=0 ) const {
       ProceduralPixelAccessor tmp(*this);
       tmp.advance(dc,dr,dp);
       return tmp;

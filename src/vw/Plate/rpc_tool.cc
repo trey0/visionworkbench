@@ -5,9 +5,8 @@
 // __END_LICENSE__
 
 
-#include <vw/Image.h>
-#include <vw/FileIO.h>
 #include <vw/Plate/PlateFile.h>
+#include <vw/Plate/HTTPUtils.h>
 
 using namespace vw;
 using namespace vw::platefile;
@@ -22,7 +21,7 @@ namespace po = boost::program_options;
 
 int main( int argc, char *argv[] ) {
 
-  std::string url;
+  Url url;
   unsigned transaction_id;
 
   po::options_description general_options("Turns georeferenced image(s) into a TOAST quadtree.\n\nGeneral Options");
@@ -30,11 +29,11 @@ int main( int argc, char *argv[] ) {
     ("failed", po::value<unsigned>(&transaction_id), "Mark a transaction as failed.")
     ("complete", po::value<unsigned>(&transaction_id), "Mark a transaction as complete, and update the read cursor..")
     ("sync", "Sync the platefile index to disk.")
-    ("help", "Display this help message.");
+    ("help,h", "Display this help message.");
 
   po::options_description hidden_options("");
   hidden_options.add_options()
-    ("url", po::value<std::string>(&url));
+    ("url", po::value(&url));
 
   po::options_description options("Allowed Options");
   options.add(general_options).add(hidden_options);
@@ -71,7 +70,7 @@ int main( int argc, char *argv[] ) {
 
   try {
 
-    std::cout << "\nOpening plate file: " << url << "\n";
+    std::cout << "\nOpening plate file: " << url.string() << "\n";
     boost::shared_ptr<PlateFile> platefile =
       boost::shared_ptr<PlateFile>( new PlateFile(url) );
 

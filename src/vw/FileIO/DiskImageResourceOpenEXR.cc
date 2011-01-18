@@ -39,8 +39,8 @@ namespace {
   // This little type computation routine helps us to determine what
   // to label the channels in the OpenEXR file given the pixel type of
   // the source image.
-  static std::string openexr_channel_string_of_pixel_type(const int pixel_format,
-                                                          const int channel) {
+  static std::string openexr_channel_string_of_pixel_type(const vw::PixelFormatEnum pixel_format,
+                                                          const size_t channel) {
     if (pixel_format == vw::VW_PIXEL_RGB) {
       switch (channel) {
       case 0 : return "R"; break;
@@ -86,7 +86,11 @@ vw::DiskImageResourceOpenEXR::~DiskImageResourceOpenEXR() {
   }
 }
 
-vw::Vector2i vw::DiskImageResourceOpenEXR::block_size() const {
+vw::Vector2i vw::DiskImageResourceOpenEXR::block_read_size() const {
+  return m_block_size;
+}
+
+vw::Vector2i vw::DiskImageResourceOpenEXR::block_write_size() const {
   return m_block_size;
 }
 
@@ -166,7 +170,7 @@ void vw::DiskImageResourceOpenEXR::set_tiled_write(int32 tile_width, int32 tile_
     // Create the file header with the appropriate number of
     // channels.  Label the channels in order starting with "Channel 0".
     Imf::Header header (m_format.cols,m_format.rows);
-    for ( int32 nn = 0; nn < m_format.planes; nn++) {
+    for ( uint32 nn = 0; nn < m_format.planes; nn++) {
       m_labels[nn] = openexr_channel_string_of_pixel_type(m_format.pixel_format, nn);
       header.channels().insert (m_labels[nn].c_str(), Imf::Channel (Imf::FLOAT));
     }
@@ -186,9 +190,9 @@ void vw::DiskImageResourceOpenEXR::set_tiled_write(int32 tile_width, int32 tile_
   }
 }
 
-void vw::DiskImageResourceOpenEXR::set_block_size(Vector2i const& block_size) {
+void vw::DiskImageResourceOpenEXR::set_block_write_size(Vector2i const& block_size) {
   if (!m_output_file_ptr) {
-    vw_throw(NoImplErr() << "DiskImageResourceOpenEXR: set_block_size() not meaningful for reading!");
+    vw_throw(NoImplErr() << "DiskImageResourceOpenEXR: set_block_write_size() not meaningful for reading!");
   }
   set_tiled_write(block_size[0], block_size[1]);
 }
@@ -209,7 +213,7 @@ void vw::DiskImageResourceOpenEXR::set_scanline_write(int32 scanlines_per_block)
     // Create the file header with the appropriate number of
     // channels.  Label the channels in order starting with "Channel 0".
     Imf::Header header (m_format.cols,m_format.rows);
-    for ( int32 nn = 0; nn < m_format.planes; nn++) {
+    for ( size_t nn = 0; nn < m_format.planes; nn++) {
       m_labels[nn] = openexr_channel_string_of_pixel_type(m_format.pixel_format, nn);
       header.channels().insert (m_labels[nn].c_str(), Imf::Channel (Imf::FLOAT));
     }
@@ -300,7 +304,7 @@ void vw::DiskImageResourceOpenEXR::read( ImageBuffer const& dest, BBox2i const& 
     ImageView<float> src_image(width, height, m_format.planes);
     ImageBuffer src = src_image.buffer();
     Imf::FrameBuffer frameBuffer;
-    for ( int32 nn = 0; nn < m_format.planes; ++nn ) {
+    for ( size_t nn = 0; nn < m_format.planes; ++nn ) {
       char* base = reinterpret_cast<char*>(&src_image(0,0,nn));
       frameBuffer.insert(
           channel_names[nn].c_str(),
@@ -321,7 +325,7 @@ void vw::DiskImageResourceOpenEXR::read( ImageBuffer const& dest, BBox2i const& 
       reinterpret_cast<Imf::TiledInputFile*>(m_input_file_ptr)->readTiles(first_tile_x, last_tile_x, first_tile_y, last_tile_y);
     } else {
       reinterpret_cast<Imf::InputFile*>(m_input_file_ptr)->setFrameBuffer (frameBuffer);
-      reinterpret_cast<Imf::InputFile*>(m_input_file_ptr)->readPixels (bbox.min().y(), std::min(vw::int32(bbox.min().y() + (height-1)), m_format.rows));
+      reinterpret_cast<Imf::InputFile*>(m_input_file_ptr)->readPixels (bbox.min().y(), std::min<int32>(bbox.min().y() + (height-1), m_format.rows));
     }
 
     convert( dest, src_image.buffer(), m_rescale );
@@ -351,7 +355,7 @@ void vw::DiskImageResourceOpenEXR::write( ImageBuffer const& src, BBox2i const& 
     Imf::FrameBuffer frameBuffer;
 
     // Build the framebuffer out of the various image channels
-    for (int32 nn = 0; nn < dst.format.planes; nn++) {
+    for (size_t nn = 0; nn < dst.format.planes; nn++) {
       char* base = reinterpret_cast<char*>(&dst_image(0,0,nn));
       frameBuffer.insert(
           m_labels[nn].c_str(),

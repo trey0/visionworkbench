@@ -5,14 +5,13 @@
 // __END_LICENSE__
 
 
-#include <vw/Core/Stopwatch.h>
-#include <vw/Plate/Index.h>
-#include <vw/Plate/AmqpConnection.h>
-#include <vw/Plate/Rpc.pb.h>
-#include <vw/Plate/common.h>
-#include <vw/Plate/RpcServices.h>
+#include <vw/Plate/Rpc.h>
 #include <vw/Plate/IndexService.h>
+#include <vw/Core/Stopwatch.h>
+#include <vw/Plate/HTTPUtils.h>
+#include <vw/Core/Log.h>
 #include <signal.h>
+#include <boost/format.hpp>
 
 #include <google/protobuf/descriptor.h>
 
@@ -20,9 +19,6 @@
 namespace po = boost::program_options;
 using namespace vw::platefile;
 using namespace vw;
-
-// Global variable.  (Makes signal handling a lot easier...)
-boost::shared_ptr<IndexServiceImpl> g_service;
 
 // ------------------------------ SIGNAL HANDLER -------------------------------
 
@@ -41,47 +37,28 @@ void sig_sync(int sig_num) {
   signal(sig_num, sig_sync);
 }
 
-// ------------------------------    MAIN LOOP   -------------------------------
-
-class ServerTask {
-  boost::shared_ptr<AmqpRpcServer> m_server;
-
-public:
-
-  ServerTask(boost::shared_ptr<AmqpRpcServer> server) : m_server(server) {}
-
-  void operator()() {
-    std::cout << "\t--> Listening for messages.\n";
-    m_server->run();
-  }
-
-  void kill() { m_server->shutdown(); }
+struct Options {
+  Url url;
+  std::string root;
+  float sync_interval;
+  bool debug;
+  bool help;
 };
 
-// ------------------------------      MAIN      -------------------------------
+VW_DEFINE_EXCEPTION(Usage, Exception);
 
-int main(int argc, char** argv) {
-  std::string exchange_name, root_directory;
-  std::string hostname;
-  float sync_interval;
-  int port;
-
-  po::options_description general_options("Runs a mosaicking daemon that listens for mosaicking requests coming in over the AMQP bus..\n\nGeneral Options:");
+void process_args(Options& opt, int argc, char *argv[]) {
+  po::options_description general_options("Runs a master index manager.\n\nGeneral Options:");
   general_options.add_options()
-    ("exchange,e", po::value<std::string>(&exchange_name)->default_value(DEV_INDEX),
-     "Specify the name of the AMQP exchange to use for the index service.")
-    ("hostname,h", po::value<std::string>(&hostname)->default_value("localhost"),
-     "Specify the hostname of the AMQP server to use for remote procedure calls (RPCs).")
-    ("port,p", po::value<int>(&port)->default_value(5672),
-     "Specify the port of the AMQP server to use for remote procedure calls (RPCs).")
-    ("sync-interval,s", po::value<float>(&sync_interval)->default_value(60),
-     "Specify the time interval (in minutes) for automatically synchronizing the index to disk.")
-    ("debug", "Output debug messages.")
-    ("help", "Display this help message");
+    ("url",             po::value(&opt.url),                               "Url to listen on")
+    ("debug",           po::bool_switch(&opt.debug)->default_value(false), "Allow server to die.")
+    ("help,h",          po::bool_switch(&opt.help)->default_value(false),  "Display this help message")
+    ("sync-interval,s", po::value(&opt.sync_interval)->default_value(60.),
+     "Specify the time interval (in minutes) for automatically synchronizing the index to disk.");
 
   po::options_description hidden_options("");
   hidden_options.add_options()
-    ("root-directory", po::value<std::string>(&root_directory));
+    ("root-directory", po::value(&opt.root));
 
   po::options_description options("Allowed Options");
   options.add(general_options).add(hidden_options);
@@ -94,30 +71,31 @@ int main(int argc, char** argv) {
   po::notify( vm );
 
   std::ostringstream usage;
-  usage << "Usage: " << argv[0] << " root_directory" << std::endl << std::endl;
+  usage << "Usage: " << argv[0] << " --url <url> root_directory" << std::endl << std::endl;
   usage << general_options << std::endl;
 
-  if( vm.count("help") ) {
-    std::cout << usage.str();
-    return 0;
-  }
+  if(opt.help)
+    vw_throw(Usage() << usage.str());
 
   if( vm.count("root-directory") != 1 ) {
-    std::cerr << "Error: must specify a root directory that contains plate files!"
-              << std::endl << std::endl;
-    std::cout << usage.str();
-    return 1;
+    vw_throw(Usage() << usage.str()
+                     << "\n\nError: must specify a root directory that contains plate files!");
   }
 
-  boost::shared_ptr<AmqpConnection> connection( new AmqpConnection(hostname, port) );
-  boost::shared_ptr<AmqpRpcServer> server( new AmqpRpcServer(connection, exchange_name,
-                                                             "index_server", vm.count("debug")) );
-  g_service.reset( new IndexServiceImpl(root_directory) );
-  server->bind_service(g_service, "index");
+  if ( vm.count("url") != 1 ) {
+    vw_throw(Usage() << usage.str()
+                     << "\n\nMust specify a url to listen on");
+  }
+}
 
-  // Start the server task in another thread
-  boost::shared_ptr<ServerTask> server_task( new ServerTask(server) );
-  Thread server_thread( server_task );
+int main(int argc, char** argv) {
+  Options opt;
+  try {
+    process_args(opt, argc, argv);
+  } catch (const Usage& u) {
+    std::cerr << u.what() << std::endl;
+    ::exit(EXIT_FAILURE);
+  }
 
   // Install Unix Signal Handlers.  These will help us to gracefully
   // recover and salvage the index under most unexpected error
@@ -125,54 +103,60 @@ int main(int argc, char** argv) {
   signal(SIGINT,  sig_unexpected_shutdown);
   signal(SIGUSR1, sig_sync);
 
-  std::cout << "Starting index server\n\n";
-  long long t0 = Stopwatch::microtime();
+  // Start the server task in another thread
+  RpcServer<IndexServiceImpl> server(opt.url, new IndexServiceImpl(opt.root));
+  server.set_debug(opt.debug);
 
-  long long sync_interval_seconds = uint64(sync_interval * 60);
-  long long seconds_until_sync = sync_interval_seconds;
+  vw_out(InfoMessage) << "Starting index server\n\n";
+  uint64 sync_interval_us = uint64(opt.sync_interval * 60000000);
+  uint64 t0 = Stopwatch::microtime(), t1;
+  uint64 next_sync = t0 + sync_interval_us;
+
+  size_t win = 0, lose = 0, draw = 0, total = 0;
+  boost::format status("qps[%7.1f]   total[%9u]   server_err[%9u]   client_err[%9u]\r");
 
   while(process_messages) {
+    bool should_sync = force_sync || (Stopwatch::microtime() >= next_sync);
 
-    // Check to see if the user generated a sync signal.
-    if (force_sync) {
-      std::cout << "\nReceived signal USR1.  Synchronizing index entries to disk:\n";
-      long long sync_t0 = Stopwatch::microtime();
-      g_service->sync();
-      float sync_dt = float(Stopwatch::microtime() - sync_t0) / 1e6;
-      std::cout << "Sync complete (took " << sync_dt << " seconds).\n";
+    if (should_sync) {
+      vw_out(InfoMessage) << "\nStarting sync to disk. (" << (force_sync ? "auto" : "manual") << ")\n";
+      uint64 s0 = Stopwatch::microtime();
+      server.impl()->sync();
+      uint64 s1 = Stopwatch::microtime();
+      next_sync = s1 + sync_interval_us;
+      vw_out(InfoMessage) << "Sync complete (took " << float(s1-s0) / 1e6  << " seconds).\n";
       force_sync = false;
     }
 
-    // Check to see if our sync timeout has occurred.
-    if (seconds_until_sync-- <= 0) {
-      std::cout << "\nAutomatic sync of index started (interval = " << sync_interval << " minutes).\n";
-      long long sync_t0 = Stopwatch::microtime();
-      g_service->sync();
-      float sync_dt = float(Stopwatch::microtime() - sync_t0) / 1e6;
-      std::cout << "Sync complete (took " << sync_dt << " seconds).\n";
+    t1 = Stopwatch::microtime();
 
-      // Restart the count-down
-      seconds_until_sync = sync_interval_seconds;
+    size_t win_dt, lose_dt, draw_dt, total_dt;
+    {
+      ThreadMap::Locked stats = server.stats();
+      win_dt = stats.get("msgs");
+      lose_dt  = stats.get("server_error");
+      draw_dt  = stats.get("client_error");
+      stats.clear();
     }
+    total_dt = win_dt + lose_dt + draw_dt;
+    win   += win_dt;
+    lose  += lose_dt;
+    draw  += draw_dt;
+    total += total_dt;
 
-    int queries = server->queries_processed();
-    size_t bytes = server->bytes_processed();
-    int n_outstanding_messages = server->incoming_message_queue_size();
-    server->reset_stats();
+    float dt = float(t1 - t0) / 1e6f;
+    t0 = t1;
 
-    float dt = float(Stopwatch::microtime() - t0) / 1e6;
-    t0 = Stopwatch::microtime();
+    vw_out(InfoMessage)
+      << status % (float(total_dt)/dt) % total % lose % draw
+      << std::flush;
 
-    std::cout << "[index_server] : "
-              << float(queries/dt) << " qps    "
-              << float(bytes/dt)/1000.0 << " kB/sec    "
-              << n_outstanding_messages << " outstanding messages                          \r"
-              << std::flush;
-    sleep(1.0);
+    Thread::sleep_ms(500);
   }
 
-  std::cout << "\nShutting down the index service safely.\n";
-  g_service->sync();
+  vw_out(InfoMessage) << "\nShutting down the index service safely.\n";
+  server.stop();
+  server.impl()->sync();
 
   return 0;
 }

@@ -287,7 +287,7 @@ int main( int argc, char *argv[] ) {
     BOOST_FOREACH( const std::string& input, opt.input_files ) {
 
       // Determining the format of the input
-      DiskImageResource *rsrc = DiskImageResource::open(input);
+      SrcImageResource *rsrc = DiskImageResource::open(input);
       ChannelTypeEnum channel_type = rsrc->channel_type();
       PixelFormatEnum pixel_format = rsrc->pixel_format();
 
@@ -302,8 +302,8 @@ int main( int argc, char *argv[] ) {
       }
 
       // Check for nodata value in the file
-      if ( rsrc->has_nodata_value() ) {
-        opt.nodata = rsrc->nodata_value();
+      if ( rsrc->has_nodata_read() ) {
+        opt.nodata = rsrc->nodata_read();
         std::cout << "\t--> Extracted nodata value from file: " << opt.nodata << ".\n";
       }
       delete rsrc;

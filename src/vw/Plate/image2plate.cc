@@ -14,13 +14,14 @@
 /// indexed by transaction IDs.
 ///
 
-#include <vw/Image.h>
-#include <vw/FileIO.h>
-#include <vw/Cartography.h>
 #include <vw/Plate/PlateFile.h>
-#include <vw/Plate/ToastPlateManager.h>
 #include <vw/Plate/PlateCarreePlateManager.h>
 #include <vw/Plate/PolarStereoPlateManager.h>
+#include <vw/Plate/ToastPlateManager.h>
+#include <vw/Cartography/GeoReference.h>
+#include <vw/FileIO.h>
+#include <vw/Image/MaskViews.h>
+#include <vw/Image/Filter.h>
 
 using namespace vw;
 using namespace vw::platefile;
@@ -36,15 +37,6 @@ namespace fs = boost::filesystem;
 // Global variables
 bool g_debug;
 
-// Erases a file suffix if one exists and returns the base string
-static std::string prefix_from_filename(std::string const& filename) {
-  std::string result = filename;
-  int index = result.rfind(".");
-  if (index != -1)
-    result.erase(index, result.size());
-  return result;
-}
-
 // --------------------------------------------------------------------------
 //                                DO_MOSAIC
 // --------------------------------------------------------------------------
@@ -55,39 +47,16 @@ void do_mosaic(boost::shared_ptr<PlateFile> platefile,
                std::string filename, int transaction_id_override,
                GeoReference const& georef, std::string output_mode,
                bool tweak_settings_for_terrain) {
+  typedef typename ViewT::pixel_type PixelT;
 
-  std::ostringstream status_str;
-  status_str << "\t    " << filename << " : ";
+  PlateManager<PixelT>* pm =
+    PlateManager<PixelT>::make( output_mode, platefile );
 
-  if (output_mode == "toast") {
-
-    boost::shared_ptr<ToastPlateManager<typename ViewT::pixel_type> > pm(
-      new ToastPlateManager<typename ViewT::pixel_type> (platefile) );
-
-    pm->insert(view.impl(), filename, transaction_id_override, georef,
-               tweak_settings_for_terrain, g_debug,
-               TerminalProgressCallback( "plate.tools.image2plate", "\t    Processing") );
-
-  } else if (output_mode == "equi") {
-
-    boost::shared_ptr<PlateCarreePlateManager<typename ViewT::pixel_type> > pm(
-      new PlateCarreePlateManager<typename ViewT::pixel_type> (platefile) );
-
-    pm->insert(view.impl(), filename, transaction_id_override, georef,
-               tweak_settings_for_terrain, g_debug,
-               TerminalProgressCallback( "plate.tools.image2plate", "\t    Processing") );
-
-  } else if (output_mode == "polar") {
-
-    boost::shared_ptr<PolarStereoPlateManager<typename ViewT::pixel_type> > pm(
-      new PolarStereoPlateManager<typename ViewT::pixel_type> (platefile,georef.datum()) );
-
-    pm->insert(view.impl(), filename, transaction_id_override, georef,
-               tweak_settings_for_terrain, g_debug,
-               TerminalProgressCallback( "plate.tools.image2plate", "\t    Processing") );
-
-  }
-
+  pm->insert(view.impl(), filename, transaction_id_override, georef,
+             tweak_settings_for_terrain, g_debug,
+             TerminalProgressCallback( "plate.tools.image2plate",
+                                       "\t    Processing") );
+  delete pm;
 }
 
 // --------------------------------------------------------------------------
@@ -95,7 +64,7 @@ void do_mosaic(boost::shared_ptr<PlateFile> platefile,
 // --------------------------------------------------------------------------
 
 int main( int argc, char *argv[] ) {
-  std::string url;
+  Url url;
   std::string tile_filetype;
   std::string output_mode;
   int tile_size;
@@ -110,13 +79,13 @@ int main( int argc, char *argv[] ) {
 
   po::options_description general_options("Turns georeferenced image(s) into a TOAST quadtree.\n\nGeneral Options");
   general_options.add_options()
-    ("output-name,o", po::value<std::string>(&url), "Specify the URL of the platefile.")
+    ("output-name,o", po::value<Url>(&url), "Specify the URL of the platefile.")
     ("transaction-id,t", po::value<int>(&transaction_id_override), "Specify the transaction_id to use for this transaction. If you don't specify one, one will be automatically assigned.\n")
     ("file-type", po::value<std::string>(&tile_filetype)->default_value("png"), "Output file type")
     ("nodata-value", po::value<double>(&nodata_value), "Explicitly set the value to treat as na data (i.e. transparent) in the input file.")
     ("mode,m", po::value<std::string>(&output_mode)->default_value("toast"), "Output mode [toast, equi, polar]")
     ("tile-size", po::value<int>(&tile_size)->default_value(256), "Tile size, in pixels")
-    ("jpeg-quality", po::value<float>(&jpeg_quality)->default_value(0.95), "JPEG quality factor (0.0 to 1.0)")
+    ("jpeg-quality", po::value<float>(&jpeg_quality)->default_value(0.95f), "JPEG quality factor (0.0 to 1.0)")
     ("png-compression", po::value<int>(&png_compression)->default_value(3), "PNG compression level (0 to 9)")
     ("cache", po::value<unsigned>(&cache_size)->default_value(512), "Source data cache size, in megabytes")
     ("terrain", "Tweak a few settings that are best for terrain platefiles. Turns on nearest neighbor sampling in mipmapping and zero out semi-transparent pixels.")
@@ -127,7 +96,7 @@ int main( int argc, char *argv[] ) {
     ("force-spherical-datum", po::value<double>(&user_spherical_datum), "Choose an arbitrary input spherical datum to use for input images', overriding the existing datum.")
     ("force-float", "Force the platefile to use a channel type of float.")
     ("debug", "Display helpful debugging messages.")
-    ("help", "Display this help message");
+    ("help,h", "Display this help message");
 
   po::options_description hidden_options("");
   hidden_options.add_options()
@@ -164,10 +133,13 @@ int main( int argc, char *argv[] ) {
     return 1;
   }
 
-  //------------------------- SET DEFAULT OPTIONS -----------------------------
+  if( vm.count("output-name") != 1 ) {
+    std::cerr << "Error: must specify a url!" << std::endl << std::endl;
+    std::cout << usage.str();
+    return 1;
+  }
 
-  if( url == "" )
-    url = prefix_from_filename(image_files[0]) + "_" + output_mode + ".plate";
+  //------------------------- SET DEFAULT OPTIONS -----------------------------
 
   DiskImageResourceJPEG::set_default_quality( jpeg_quality );
   DiskImageResourcePNG::set_default_compression_level( png_compression );
@@ -259,9 +231,9 @@ int main( int argc, char *argv[] ) {
       if (vm.count("nodata-value")) {
         has_nodata_value = true;
         std::cout << "\t--> Using user-supplied nodata value: " << nodata_value << ".\n";
-      } else if ( rsrc->has_nodata_value() ) {
+      } else if ( rsrc->has_nodata_read() ) {
         has_nodata_value = true;
-        nodata_value = rsrc->nodata_value();
+        nodata_value = rsrc->nodata_read();
         std::cout << "\t--> Extracted nodata value from file: " << nodata_value << ".\n";
       } else {
         nodata_value = 0;

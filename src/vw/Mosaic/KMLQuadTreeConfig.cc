@@ -106,7 +106,7 @@ namespace mosaic {
 
     std::vector<std::pair<std::string,vw::BBox2i> > branch_func( QuadTreeGenerator const&, std::string const& name, BBox2i const& region ) const;
     void metadata_func( QuadTreeGenerator const&, QuadTreeGenerator::TileInfo const& info ) const;
-    boost::shared_ptr<ImageResource> tile_resource_func( QuadTreeGenerator const&, QuadTreeGenerator::TileInfo const& info, ImageFormat const& format ) const;
+    boost::shared_ptr<DstImageResource> tile_resource_func( QuadTreeGenerator const&, QuadTreeGenerator::TileInfo const& info, ImageFormat const& format ) const;
 
   public:
     KMLQuadTreeConfigData()
@@ -225,7 +225,7 @@ namespace mosaic {
   void KMLQuadTreeConfigData::metadata_func( QuadTreeGenerator const& qtree, QuadTreeGenerator::TileInfo const& info ) const {
     std::ostringstream kml;
     fs::path file_path( info.filepath, fs::native );
-    int base_len = file_path.branch_path().native_file_string().size() + 1;
+    size_t base_len = file_path.branch_path().native_file_string().size() + 1;
     fs::path kml_path = change_extension( file_path, ".kml" );
     kml << std::setprecision(10);
 
@@ -267,7 +267,7 @@ namespace mosaic {
 
     int max_lod = m_max_lod_pixels;
     if( num_children == 0 ) max_lod = -1;
-    int draw_order = m_draw_order_offset + info.name.size();
+    int draw_order = m_draw_order_offset + int(info.name.size());
     BBox2i go_bbox = (qtree.get_crop_images() ? info.image_bbox : info.region_bbox);
     if( exists( fs::path( info.filepath + info.filetype ) ) ) {
       kml << kml_ground_overlay( file_path.leaf() + info.filetype,
@@ -321,13 +321,13 @@ namespace mosaic {
     return children;
   }
 
-  boost::shared_ptr<ImageResource> KMLQuadTreeConfigData::tile_resource_func( QuadTreeGenerator const&, QuadTreeGenerator::TileInfo const& info, ImageFormat const& format ) const {
+  boost::shared_ptr<DstImageResource> KMLQuadTreeConfigData::tile_resource_func( QuadTreeGenerator const&, QuadTreeGenerator::TileInfo const& info, ImageFormat const& format ) const {
     create_directories( fs::path( info.filepath, fs::native ).branch_path() );
     if( info.filetype == ".png" && (format.pixel_format==VW_PIXEL_RGBA || format.pixel_format==VW_PIXEL_GRAYA) ) {
-      return boost::shared_ptr<ImageResource>( new DiskImageResourcePNGAlphaHack( info.filepath+info.filetype, format ) );
+      return boost::shared_ptr<DstImageResource>( new DiskImageResourcePNGAlphaHack( info.filepath+info.filetype, format ) );
     }
     else {
-      return boost::shared_ptr<ImageResource>( DiskImageResource::create( info.filepath+info.filetype, format ) );
+      return boost::shared_ptr<DstImageResource>( DiskImageResource::create( info.filepath+info.filetype, format ) );
     }
   }
 

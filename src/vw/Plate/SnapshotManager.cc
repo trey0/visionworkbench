@@ -100,19 +100,22 @@ namespace platefile {
   int vw::platefile::SnapshotManager<PixelT>::snapshot_helper(int current_col,
                        int current_row,
                        int current_level,
-                       std::map<int32, TileHeader> composite_tiles,
+                       std::map<TransactionOrNeg, TileHeader> composite_tiles,
                        vw::BBox2i const& target_region,
                        int target_level,
-                       int start_transaction_id,
-                       int end_transaction_id,
-                       int write_transaction_id,
+                       TransactionOrNeg start_transaction_id,
+                       TransactionOrNeg end_transaction_id,
+                       Transaction write_transaction_id,
                        bool tweak_settings_for_terrain) const {
+
+    typedef std::map<TransactionOrNeg, TileHeader> TileMap;
+    typedef std::list<TileHeader> TileList;
 
     // Check to see if there are any tiles at this level that need to be
     // snapshotted.  We fetch one additional tile outside of the
     // specified range so that we get any tiles that were not actually
     // composited during the last snapshot.
-    std::list<TileHeader> tile_records;
+    TileList tile_records;
     tile_records = m_platefile->search_by_location(current_col, current_row, current_level,
                                                    start_transaction_id, end_transaction_id,
                                                    true); // fetch_one_additional_entry
@@ -129,7 +132,7 @@ namespace platefile {
     // transaction_ids will be overwritten by new tile records.  In
     // this fashion, we build up a list of the highest resolution
     // valid tiles in order of transaction id.
-    for (std::list<TileHeader>::iterator iter = tile_records.begin();
+    for (TileList::const_iterator iter = tile_records.begin();
          iter != tile_records.end(); ++iter) {
 
       // We always add any valid tiles at the target_level, since
@@ -160,8 +163,8 @@ namespace platefile {
       // potentially return it's own additional tile, and we only need
       // the most recent additional tile in the stack to include in
       // the composite.
-      std::map<int32, TileHeader>::iterator cull_iter = composite_tiles.begin();
-      int extra_tid_id = -1;
+      TileMap::iterator cull_iter = composite_tiles.begin();
+      TransactionOrNeg extra_tid_id = -1;
       while (cull_iter != composite_tiles.end()) {
 
         // The rest of the tiles are not "extra," so we stop searching
@@ -182,7 +185,7 @@ namespace platefile {
       if (extra_tid_id != -1) {
         cull_iter  = composite_tiles.begin();
         while (cull_iter != composite_tiles.end()) {
-          std::map<int32, TileHeader>::iterator current_iter = cull_iter;
+          TileMap::iterator current_iter = cull_iter;
           ++cull_iter;
 
           // Once again, we are only interested in considering "extra"
@@ -211,10 +214,10 @@ namespace platefile {
       // will have already been incorporated into the previous
       // snapshot.
       if (composite_tiles.size() >= 2) {
-        std::map<int32, TileHeader>::iterator lowest_tid_iter = composite_tiles.begin();
-        std::map<int32, TileHeader>::iterator second_tid_iter = lowest_tid_iter;
+        TileMap::iterator lowest_tid_iter = composite_tiles.begin();
+        TileMap::const_iterator second_tid_iter = lowest_tid_iter;
         ++second_tid_iter;
-        if (int(second_tid_iter->first) == start_transaction_id) {
+        if (second_tid_iter->first == start_transaction_id) {
           vw_out(DebugMessage, "plate::snapshot")
             << "Culling tile that was already part of the last snapshot: "
             << lowest_tid_iter->first << " @ " << lowest_tid_iter->second.level() << "\n";
@@ -235,7 +238,7 @@ namespace platefile {
 
       vw_out(DebugMessage, "plate::snapshot") << "Starting Compositing run...\n";
       int num_composited = 0;
-      for (std::map<int32, TileHeader>::reverse_iterator iter = composite_tiles.rbegin();
+      for (TileMap::reverse_iterator iter = composite_tiles.rbegin();
            iter != composite_tiles.rend(); ++iter) {
 
         TileHeader &current_hdr = iter->second;
@@ -399,9 +402,9 @@ namespace platefile {
 
 template <class PixelT>
 void vw::platefile::SnapshotManager<PixelT>::snapshot(int level, BBox2i const& tile_region,
-                                                      int start_transaction_id,
-                                                      int end_transaction_id,
-                                                      int write_transaction_id,
+                                                      TransactionOrNeg start_transaction_id,
+                                                      TransactionOrNeg end_transaction_id,
+                                                      Transaction write_transaction_id,
                                                       bool tweak_settings_for_terrain) const {
 
   // Subdivide the bbox into smaller workunits if necessary.
@@ -412,7 +415,7 @@ void vw::platefile::SnapshotManager<PixelT>::snapshot(int level, BBox2i const& t
 
     // Create an empty list of composite tiles and then kick off the
     // recursive snapshotting process.
-    std::map<int32, TileHeader> composite_tiles;
+    std::map<TransactionOrNeg, TileHeader> composite_tiles;
     int num_tiles_updated = snapshot_helper(0, 0, 0, composite_tiles, *region_iter, level,
                                             start_transaction_id, end_transaction_id,
                                             write_transaction_id,
@@ -427,9 +430,9 @@ void vw::platefile::SnapshotManager<PixelT>::snapshot(int level, BBox2i const& t
 
 // Create a full snapshot of every level and every region in the mosaic.
 template <class PixelT>
-void vw::platefile::SnapshotManager<PixelT>::full_snapshot(int start_transaction_id,
-                                                           int end_transaction_id,
-                                                           int write_transaction_id,
+void vw::platefile::SnapshotManager<PixelT>::full_snapshot(TransactionOrNeg start_transaction_id,
+                                                           TransactionOrNeg end_transaction_id,
+                                                           Transaction write_transaction_id,
                                                            bool tweak_settings_for_terrain) const {
 
   for (int level = 0; level < m_platefile->num_levels(); ++level) {
@@ -439,7 +442,7 @@ void vw::platefile::SnapshotManager<PixelT>::full_snapshot(int start_transaction
 
     // Snapshot the entire region at each level.  These region will be
     // broken down into smaller work units in snapshot().
-    int region_size = pow(2,level);
+    int region_size = 1 << level;
     int subdivided_region_size = region_size / 16;
     if (subdivided_region_size < 1024) subdivided_region_size = 1024;
     BBox2i full_region(0,0,region_size,region_size);
@@ -462,51 +465,51 @@ namespace platefile {
   template
   void vw::platefile::SnapshotManager<PixelGrayA<uint8> >::snapshot(int level,
                                                                     BBox2i const& bbox,
-                                                                    int start_transaction_id,
-                                                                    int end_transaction_id,
-                                                                    int write_transaction_id,
+                                                                    TransactionOrNeg start_transaction_id,
+                                                                    TransactionOrNeg end_transaction_id,
+                                                                    Transaction write_transaction_id,
                                                                     bool tweak_settings_for_terrain) const;
   template
   void vw::platefile::SnapshotManager<PixelGrayA<int16> >::snapshot(int level,
                                                                     BBox2i const& bbox,
-                                                                    int start_transaction_id,
-                                                                    int end_transaction_id,
-                                                                    int write_transaction_id,
+                                                                    TransactionOrNeg start_transaction_id,
+                                                                    TransactionOrNeg end_transaction_id,
+                                                                    Transaction write_transaction_id,
                                                                     bool tweak_settings_for_terrain) const;
   template
   void vw::platefile::SnapshotManager<PixelGrayA<float32> >::snapshot(int level,
                                                                       BBox2i const& bbox,
-                                                                      int start_transaction_id,
-                                                                      int end_transaction_id,
-                                                                      int write_transaction_id,
+                                                                      TransactionOrNeg start_transaction_id,
+                                                                      TransactionOrNeg end_transaction_id,
+                                                                      Transaction write_transaction_id,
                                                                       bool tweak_settings_for_terrain) const;
   template
   void vw::platefile::SnapshotManager<PixelRGBA<uint8> >::snapshot(int level,
                                                                    BBox2i const& bbox,
-                                                                   int start_transaction_id,
-                                                                   int end_transaction_id,
-                                                                   int write_transaction_id,
+                                                                   TransactionOrNeg start_transaction_id,
+                                                                   TransactionOrNeg end_transaction_id,
+                                                                   Transaction write_transaction_id,
                                                                    bool tweak_settings_for_terrain) const;
 
   template
-  void vw::platefile::SnapshotManager<PixelGrayA<uint8> >::full_snapshot(int start_transaction_id,
-                                                                         int end_transaction_id,
-                                                                         int write_transaction_id,
+  void vw::platefile::SnapshotManager<PixelGrayA<uint8> >::full_snapshot(TransactionOrNeg start_transaction_id,
+                                                                         TransactionOrNeg end_transaction_id,
+                                                                         Transaction write_transaction_id,
                                                                          bool tweak_settings_for_terrain) const;
   template
-  void vw::platefile::SnapshotManager<PixelGrayA<int16> >::full_snapshot(int start_transaction_id,
-                                                                         int end_transaction_id,
-                                                                         int write_transaction_id,
+  void vw::platefile::SnapshotManager<PixelGrayA<int16> >::full_snapshot(TransactionOrNeg start_transaction_id,
+                                                                         TransactionOrNeg end_transaction_id,
+                                                                         Transaction write_transaction_id,
                                                                          bool tweak_settings_for_terrain) const;
   template
-  void vw::platefile::SnapshotManager<PixelGrayA<float32> >::full_snapshot(int start_transaction_id,
-                                                                           int end_transaction_id,
-                                                                           int write_transaction_id,
+  void vw::platefile::SnapshotManager<PixelGrayA<float32> >::full_snapshot(TransactionOrNeg start_transaction_id,
+                                                                           TransactionOrNeg end_transaction_id,
+                                                                           Transaction write_transaction_id,
                                                                            bool tweak_settings_for_terrain) const;
   template
-  void vw::platefile::SnapshotManager<PixelRGBA<uint8> >::full_snapshot(int start_transaction_id,
-                                                                        int end_transaction_id,
-                                                                        int write_transaction_id,
+  void vw::platefile::SnapshotManager<PixelRGBA<uint8> >::full_snapshot(TransactionOrNeg start_transaction_id,
+                                                                        TransactionOrNeg end_transaction_id,
+                                                                        Transaction write_transaction_id,
                                                                         bool tweak_settings_for_terrain) const;
 
 

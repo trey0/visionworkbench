@@ -31,7 +31,7 @@ namespace vw {
   /// Describes the format of an image, i.e. its dimensions, pixel
   /// structure, and channel type.
   struct ImageFormat {
-    int32 cols, rows, planes;
+    uint32 cols, rows, planes;
     PixelFormatEnum pixel_format;
     ChannelTypeEnum channel_type;
 
@@ -41,99 +41,108 @@ namespace vw {
         channel_type(VW_CHANNEL_UNKNOWN)
     {}
 
-  };
-
-
-  /// Base class from which specific image resources derive.
-  class ImageResource {
-  public:
-
-    virtual ~ImageResource() {};
-
-    /// Returns the number of columns in an image resource.
-    virtual int32 cols() const = 0;
-
-    /// Returns the number of rows in an image resource.
-    virtual int32 rows() const = 0;
-
-    /// Returns the number of planes in an image resource.
-    virtual int32 planes() const = 0;
-
-    /// Returns the number of channels in a image resource.
-    int32 channels() const { return num_channels( pixel_format() ); }
-
-    /// Returns the native pixel format of the resource.
-    virtual PixelFormatEnum pixel_format() const = 0;
-
-    /// Returns the native channel type of the resource.
-    virtual ChannelTypeEnum channel_type() const = 0;
-
-    /// Read the image resource at the given location into the given buffer.
-    virtual void read( ImageBuffer const& buf, BBox2i const& bbox ) const = 0;
-
-    /// Write the given buffer to the image resource at the given location.
-    virtual void write( ImageBuffer const& buf, BBox2i const& bbox ) = 0;
-
-    /// Returns the preferred block size/alignment for partial reads or writes.
-    virtual Vector2i block_size() const { return Vector2i(cols(),rows()); }
-
-    /// Set the preferred block size/alignment for partial reads or writes.
-    virtual void set_block_size( Vector2i const& ) {
-      vw_throw(NoImplErr() << "This ImageResource does not support set_block_size().");
-    };
-
-    /// Query whether this ImageResource has a nodata value
-    virtual bool has_nodata_value() const { return false; }
-
-    /// Fetch this ImageResource's nodata value
-    virtual double nodata_value() const { return 0.0; }
-
-    /// Set the preferred block size/alignment for partial reads or writes.
-    virtual void set_nodata_value( double /*value*/ ) {
-      vw_throw(NoImplErr() << "This ImageResource does not support set_nodata_value().");
-    };
-
-    /// Force any changes to be written to the resource.
-    virtual void flush() {}
-
-  };
-
-
-  /// Acts as a proxy for an arbitrary ImageResource subclass, which is
-  /// holds by shared pointer.  This makes it easy to operate on arbitrary
-  /// image resources without having to worry about memory management and
-  /// object lifetime yourself.
-  class ImageResourceRef : public ImageResource {
-    boost::shared_ptr<ImageResource> m_resource;
-  public:
-    // This constructor takes ownership over the resource it's given.
-    template <class ResourceT>
-    ImageResourceRef( ResourceT *resource ) {
-      boost::shared_ptr<ResourceT> resource_ptr( resource );
-      m_resource = resource_ptr;
+    // Does this represent a fully-specified data format?
+    bool complete() const {
+      return   cols != 0
+          &&   rows != 0
+          && planes != 0
+          && num_channels_nothrow(pixel_format) > 0
+          && channel_size_nothrow(channel_type) > 0;
     }
 
-    ImageResourceRef( boost::shared_ptr<ImageResource> resource )
-      : m_resource( resource ) {}
+    inline bool simple_convert(const ImageFormat& b) const {
+      return simple_conversion(channel_type, b.channel_type)
+          && simple_conversion(pixel_format, b.pixel_format);
+    }
 
-    ~ImageResourceRef() {}
-
-    int32 cols() const { return m_resource->cols(); }
-    int32 rows() const { return m_resource->rows(); }
-    int32 planes() const { return m_resource->planes(); }
-
-    PixelFormatEnum pixel_format() const { return m_resource->pixel_format(); }
-    ChannelTypeEnum channel_type() const { return m_resource->channel_type(); }
-
-    void read( ImageBuffer const& buf, BBox2i const& bbox ) const { m_resource->read(buf,bbox); }
-    void write( ImageBuffer const& buf, BBox2i const& bbox ) { m_resource->write(buf, bbox); }
-
-    Vector2i block_size() const { return m_resource->block_size(); }
-    void set_block_size( Vector2i const& size ) { m_resource->set_block_size(size); }
-
-    void flush() { m_resource->flush(); }
+    inline bool same_size(const ImageFormat& b) const {
+      return cols == b.cols && rows == b.rows && planes == b.planes;
+    }
   };
 
+  // A read-only image resource
+  class SrcImageResource {
+    public:
+      virtual ~SrcImageResource() {}
+
+      /// Returns the number of columns in an image resource.
+      virtual int32 cols() const = 0;
+
+      /// Returns the number of rows in an image resource.
+      virtual int32 rows() const = 0;
+
+      /// Returns the number of planes in an image resource.
+      virtual int32 planes() const = 0;
+
+      /// Returns the number of channels in a image resource.
+      int32 channels() const { return num_channels( pixel_format() ); }
+
+      /// Returns the native pixel format of the resource.
+      virtual PixelFormatEnum pixel_format() const = 0;
+
+      /// Returns the native channel type of the resource.
+      virtual ChannelTypeEnum channel_type() const = 0;
+
+      // Returns the image format as a single object
+      virtual ImageFormat format() const;
+
+      /// Read the image resource at the given location into the given buffer.
+      virtual void read( ImageBuffer const& buf, BBox2i const& bbox ) const = 0;
+
+      /// Does this resource support block reads?
+      // If you override this to true, you must implement the other block_read functions
+      virtual bool has_block_read() const = 0;
+
+      /// Returns the preferred block size/alignment for partial reads.
+      virtual Vector2i block_read_size() const { return Vector2i(cols(),rows()); }
+
+      // Does this resource have a nodata value?
+      // If you override this to true, you must implement the other nodata_read functions
+      virtual bool has_nodata_read() const = 0;
+
+      /// Fetch this ImageResource's nodata value
+      virtual double nodata_read() const {
+        vw_throw(NoImplErr() << "This ImageResource does not support nodata_read().");
+      }
+  };
+
+  // A write-only image resource
+  class DstImageResource {
+    public:
+      virtual ~DstImageResource() {}
+
+      /// Write the given buffer to the image resource at the given location.
+      virtual void write( ImageBuffer const& buf, BBox2i const& bbox ) = 0;
+
+      // Does this resource support block writes?
+      // If you override this to true, you must implement the other block_write functions
+      virtual bool has_block_write() const = 0;
+
+      /// Gets the preferred block size/alignment for partial writes.
+      virtual Vector2i block_write_size() const {
+        vw_throw(NoImplErr() << "This ImageResource does not support block writes");
+      }
+
+      /// Sets the preferred block size/alignment for partial writes.
+      virtual void set_block_write_size(const Vector2i& /*v*/) {
+        vw_throw(NoImplErr() << "This ImageResource does not support block writes");
+      }
+
+      // Does this resource have an output nodata value?
+      // If you override this to true, you must implement the other nodata_write functions
+      virtual bool has_nodata_write() const = 0;
+
+      /// Set a nodata value that will be stored in the underlying stream
+      virtual void set_nodata_write( double /*value*/ ) {
+        vw_throw(NoImplErr() << "This ImageResource does not support set_nodata_write().");
+      }
+
+      /// Force any changes to be written to the resource.
+      virtual void flush() = 0;
+  };
+
+  // A read-write image resource
+  class ImageResource : public SrcImageResource, public DstImageResource {};
 
   /// Represents a generic image buffer in memory, with dimensions and
   /// pixel format specified at run time.  This class does not
@@ -145,7 +154,7 @@ namespace vw {
   struct ImageBuffer {
     void* data;
     ImageFormat format;
-    ptrdiff_t cstride, rstride, pstride;
+    ssize_t cstride, rstride, pstride;
     bool unpremultiplied;
 
     /// Default constructor; constructs an undefined buffer
@@ -179,6 +188,11 @@ namespace vw {
 
     /// Returns the native channel type of the bufffer.
     inline ChannelTypeEnum channel_type() const { return format.channel_type; }
+
+    /// Returns the size (in bytes) of the data described by this buffer
+    inline size_t byte_size() const {
+      return planes() * pstride;
+    }
 
     /// Returns a cropped version of this bufffer.
     inline ImageBuffer cropped( BBox2i const& bbox ) const {

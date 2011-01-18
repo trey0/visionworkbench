@@ -75,9 +75,10 @@ AC_LANG(C++)
 AX_COMMON_OPTIONS
 AC_CHECK_TYPE(ssize_t, int)
 
-# Does the compiler support noreturn?
+# Does the compiler support various fun function attributes?
 AX_CHECK_FUNCTION_ATTRIBUTE([noreturn])
 AX_CHECK_FUNCTION_ATTRIBUTE([deprecated])
+AX_CHECK_FUNCTION_ATTRIBUTE([warn_unused_result])
 
 # Looking for headers
 AC_CHECK_HEADERS([unistd.h pwd.h fenv.h])
@@ -318,7 +319,7 @@ else
   fi
 
   # We seed QT_QMAKE's cppflags and libs with the ones qmake figured out
-  PKG_QT_QMAKE_CPPFLAGS="$PKG_QT_QMAKE_CPPFLAGS $QT_CPPFLAGS"
+  PKG_QT_QMAKE_CPPFLAGS="$PKG_QT_QMAKE_CPPFLAGS `strip_arg -I. $QT_CPPFLAGS`"
   AX_PKG(QT_QMAKE, [], [$QT_LIBS], [QVector])
 fi
 
@@ -357,6 +358,7 @@ PKG_CHECK_MODULES([CAIROMM], [cairomm-1.0], [
 AX_PKG(CAIROMM, [], [$CAIROMM_LIBS], [cairomm/cairomm.h])
 
 AX_PKG(RABBITMQ_C, [], [-lrabbitmq], [stdlib.h stdint.h amqp.h])
+AX_PKG(ZEROMQ,     [], [-lzmq],      [zmq.hpp])
 AX_PKG(PROTOBUF, [PTHREADS], [-lprotobuf], [google/protobuf/stubs/common.h])
 AX_PKG(OPENCV, [], [-lcxcore], [opencv/cxcore.h])
 
@@ -390,6 +392,7 @@ AM_CONDITIONAL(HAVE_PKG_HDF, [test "$HAVE_PKG_HDF" = "yes"])
 AM_CONDITIONAL(HAVE_PKG_GDAL, [test "$HAVE_PKG_GDAL" = "yes"])
 AM_CONDITIONAL(HAVE_PKG_CAIROMM, [test "$HAVE_PKG_CAIROMM" = "yes"])
 AM_CONDITIONAL(HAVE_PKG_RABBITMQ_C, [test "$HAVE_PKG_RABBITMQ_C" = "yes"])
+AM_CONDITIONAL(HAVE_PKG_ZEROMQ, [test "$HAVE_PKG_ZEROMQ" = "yes"])
 AM_CONDITIONAL(HAVE_PKG_PROTOBUF, [test "$HAVE_PKG_PROTOBUF" = "yes"])
 AM_CONDITIONAL(HAVE_PKG_OPENCV, [test "$HAVE_PKG_OPENCV" = "yes"])
 AM_CONDITIONAL(HAVE_PYTHON, [test "$HAVE_PYTHON" = "yes"])
@@ -467,7 +470,7 @@ AM_CONDITIONAL(MAKE_MODULE_GPU,              [test "$MAKE_MODULE_GPU" = "yes"])
 # final processing
 ##################################################
 
-VW_CPPFLAGS="-I\${top_srcdir}/src $OTHER_CPPFLAGS"
+VW_CPPFLAGS="-I\${abs_top_srcdir}/src $OTHER_CPPFLAGS"
 VW_LDFLAGS="$OTHER_LDFLAGS"
 
 # Do this last, to make sure it's not overridden

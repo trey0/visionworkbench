@@ -134,6 +134,7 @@ namespace gui {
     void request_started(int id);
     void response_header_received( const QHttpResponseHeader & resp );
     void request_finished(int id, bool error);
+    void state_changed(int state);
   };
 
   class WebTileGenerator : public TileGenerator {
@@ -192,7 +193,7 @@ namespace gui {
 
   class ImageTileGenerator : public TileGenerator {
     std::string m_filename;
-    boost::shared_ptr<DiskImageResource> m_rsrc;
+    boost::shared_ptr<SrcImageResource> m_rsrc;
 
   public:
     ImageTileGenerator(std::string filename);

@@ -34,6 +34,7 @@ namespace fs = boost::filesystem;
 #include <vw/FileIO/DiskImageView.h>
 #include <vw/FileIO/DiskImageResourceGDAL.h>
 #include <vw/Cartography/GeoReference.h>
+#include <vw/tools/Common.h>
 
 using namespace vw;
 
@@ -163,12 +164,12 @@ void do_hillshade(po::variables_map const& vm) {
   ImageViewRef<PixelGray<double> > input_image = channel_cast<double>(disk_dem_file);
 
   ImageViewRef<PixelMask<PixelGray<double> > > dem;
-  DiskImageResource *disk_dem_rsrc = DiskImageResource::open(input_file_name);
+  SrcImageResource *disk_dem_rsrc = DiskImageResource::open(input_file_name);
   if (vm.count("nodata-value")) {
     std::cout << "\t--> Masking pixel value: " << nodata_value << ".\n";
     dem = create_mask(input_image, nodata_value);
-  } else if ( disk_dem_rsrc->has_nodata_value() ) {
-    nodata_value = disk_dem_rsrc->nodata_value();
+  } else if ( disk_dem_rsrc->has_nodata_read() ) {
+    nodata_value = disk_dem_rsrc->nodata_read();
     std::cout << "\t--> Extracted nodata value from file: " << nodata_value << ".\n";
     dem = create_mask(input_image, nodata_value);
   } else {
@@ -188,7 +189,7 @@ void do_hillshade(po::variables_map const& vm) {
   std::cout << "Writing shaded relief image: " << output_file_name << "\n";
 
   DiskImageResourceGDAL rsrc(output_file_name, shaded_image.format());
-  rsrc.set_block_size(Vector2i(1024,1024));
+  rsrc.set_block_write_size(Vector2i(1024,1024));
   write_georeference(rsrc, georef);
   write_image(rsrc, shaded_image,
               TerminalProgressCallback( "tools.hillshade", "Writing:"));
@@ -237,21 +238,17 @@ int main( int argc, char *argv[] ) {
 
   try {
     // Get the right pixel/channel type.
-    DiskImageResource *rsrc = DiskImageResource::open(input_file_name);
-    ChannelTypeEnum channel_type = rsrc->channel_type();
-    PixelFormatEnum pixel_format = rsrc->pixel_format();
-    delete rsrc;
+    ImageFormat fmt = tools::taste_image(input_file_name);
 
-    switch(pixel_format) {
+    switch(fmt.pixel_format) {
     case VW_PIXEL_GRAY:
     case VW_PIXEL_GRAYA:
     case VW_PIXEL_RGB:
     case VW_PIXEL_RGBA:
-      switch(channel_type) {
+      switch(fmt.channel_type) {
       case VW_CHANNEL_UINT8:  do_hillshade<PixelGray<uint8>   >(vm); break;
       case VW_CHANNEL_INT16:  do_hillshade<PixelGray<int16>   >(vm); break;
       case VW_CHANNEL_UINT16: do_hillshade<PixelGray<uint16>  >(vm); break;
-      case VW_CHANNEL_FLOAT32:do_hillshade<PixelGray<float32> >(vm); break;
       case VW_CHANNEL_FLOAT64:do_hillshade<PixelGray<float64> >(vm); break;
       default:                do_hillshade<PixelGray<float32> >(vm); break;
       }

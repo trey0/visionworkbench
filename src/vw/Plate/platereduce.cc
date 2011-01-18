@@ -88,12 +88,15 @@ struct WeightedVar2 : public ReduceBase<WeightedVar2> {
     int num_channels = CompoundNumChannels<PixelT>::value;
     std::vector<ImageView<float32> > sum_weighted_data; //store the mean
     std::vector<ImageView<float32> > sum_weighted_data2; //store the variance
+    std::vector<ImageView<float32> > sum_weighted_stdv; //store the standard deviation
 
     for ( uint8 i = 0; i < num_channels-1; i++ ){
       sum_weighted_data.push_back(ImageView<float32>(input.front().cols(),
                                                      input.front().rows()));
       sum_weighted_data2.push_back(ImageView<float32>(input.front().cols(),
                                                      input.front().rows()));
+      sum_weighted_stdv.push_back(ImageView<float32>(input.front().cols(),
+                                                    input.front().rows()));
     }
 
     ImageView<float32> summed_weights(input.front().cols(),
@@ -116,13 +119,14 @@ struct WeightedVar2 : public ReduceBase<WeightedVar2> {
     // Normalizing
     for ( uint8 i = 0; i < num_channels-1; i++ ){
       sum_weighted_data[i] /= summed_weights;
-      sum_weighted_data2[i] = sum_weighted_data2[i]/summed_weights - sum_weighted_data[i];
+      sum_weighted_data2[i] = sum_weighted_data2[i]/summed_weights - sum_weighted_data[i]*sum_weighted_data[i];
+      sum_weighted_stdv[i]=sqrt(clamp(sum_weighted_data2[i],0, 999999999));
     }
 
     var2.set_size(input.front().cols(),
                   input.front().rows());
     for ( uint8 i = 0; i < num_channels-1; i++ )
-      select_channel(var2,i) = sum_weighted_data2[i];
+      select_channel(var2,i) = sum_weighted_stdv[i];
     // Setting output alpha
     select_channel(var2,num_channels-1) =
       threshold(summed_weights,0,
@@ -136,9 +140,9 @@ struct RobustMean : public ReduceBase<RobustMean> {
 private:
   float smart_weighted_mean( vector<float> & weights,
                              vector<float> const& samples,
-                             float const sign_level=0.3,
-                             float const learn_rate=0.1,
-                             float const error_tol=1e-5,
+                             float const sign_level=0.3f,
+                             float const learn_rate=0.1f,
+                             float const error_tol=1e-5f,
                              int32 const max_iter=1000 ) {
     namespace bm = boost::math;
     switch ( samples.size() ) {
@@ -186,7 +190,7 @@ private:
           float p_value = 1;                   // p-value
           if (SW1 > 1 && DN > 0) {             // basic assumptions
             bm::fisher_f dist(v1,v2);
-            p_value = 1-cdf(dist, FS);
+            p_value = boost::numeric_cast<float>(1-cdf(dist, FS));
           }
 
           // gradient decent update
@@ -202,7 +206,7 @@ private:
 
         // terminal condition: mean squared difference of weights is
         // smaller than the tolerance
-        if ( sse_wt/weights.size() < error_tol ) break;
+        if ( sse_wt/float(weights.size()) < error_tol ) break;
       }
 
       return  weighted_mean;
@@ -260,14 +264,16 @@ public:
 // Standard Arguments
 struct Options {
   // Input
-  string url;
+  Url url;
   int32 level;
-  int32 start_trans_id;
-  int32 end_trans_id;
+  TransactionOrNeg start_trans_id;
+  TransactionOrNeg end_trans_id;
+  std::string start_description;
+  bool start, finish;
 
   // Output
   string function;
-  int32 transaction_id;
+  TransactionOrNeg transaction_id;
 
   // For spawning multiple jobs
   int32 job_id;
@@ -279,16 +285,18 @@ void handle_arguments(int argc, char *argv[], Options& opt) {
   general_options.add_options()
     ("job_id,j", po::value(&opt.job_id)->default_value(0), "")
     ("num_jobs,n", po::value(&opt.num_jobs)->default_value(1), "")
-    ("start_t", po::value(&opt.start_trans_id)->default_value(0), "Input starting transaction ID range.")
-    ("end_t", po::value(&opt.end_trans_id), "Input ending transaction ID range.")
+    ("begin_transaction", po::value(&opt.start_trans_id)->default_value(0), "Input starting transaction ID range.")
+    ("end_transaction", po::value(&opt.end_trans_id), "Input ending transaction ID range.")
     ("level,l", po::value(&opt.level)->default_value(-1), "Level inside the plate in which to process. -1 will error out and show the number of levels available.")
     ("function,f", po::value(&opt.function)->default_value("WeightedAvg"), "Functions that are available are [WeightedAvg RobustMean WeightedVar]")
     ("transaction-id,t",po::value(&opt.transaction_id)->default_value(2000), "Transaction id to write to")
-    ("help", "Display this help message");
+    ("start", po::value<std::string>(&opt.start_description), "Starts a multi-part plate reduce.")
+    ("finish", "Finish a multi-part plate reduce")
+    ("help,h", "Display this help message");
 
   po::options_description hidden_options("");
   hidden_options.add_options()
-    ("input-file", po::value<std::string>(&opt.url), "");
+    ("input-file", po::value(&opt.url), "");
 
   po::options_description options("");
   options.add(general_options).add(hidden_options);
@@ -305,10 +313,13 @@ void handle_arguments(int argc, char *argv[], Options& opt) {
               << e.what() << options );
   }
 
+  opt.start = vm.count("start");
+  opt.finish = vm.count("finish");
+
   std::ostringstream usage;
   usage << "Usage: " << argv[0] << " <plate_filename> [options]\n";
 
-  if ( vm.count("help") || opt.url.empty() )
+  if ( vm.count("help") || vm.count("input-file") != 1 || opt.transaction_id.newest())
     vw_throw( ArgumentErr() << usage.str() << options );
 }
 
@@ -355,11 +366,9 @@ void apply_reduce( boost::shared_ptr<PlateFile> platefile,
         ImageView<PixelT> result;
         reduce(tiles, tile_records, result);
 
-        platefile->write_request();
         platefile->write_update(result,
                                 location[0], location[1],
-                                opt.level, opt.transaction_id);
-        platefile->write_complete();
+                                opt.level, opt.transaction_id.promote());
       }
     }
   }
@@ -372,10 +381,25 @@ void do_run( Options& opt, ReduceBase<ReduceT>& reduce ) {
   boost::shared_ptr<PlateFile> platefile =
     boost::shared_ptr<PlateFile>( new PlateFile(opt.url) );
 
+  if ( opt.start ) {
+    Transaction t = platefile->transaction_request(opt.start_description, opt.transaction_id );
+    vw_out() << "Transaction started with ID = " << t << "\n";
+    vw_out() << "Plate has " << platefile->num_levels() << " levels.\n";
+    exit(0);
+  }
+
+  if ( opt.finish ) {
+    // Update the read cursor when the snapshot is complete!
+    platefile->transaction_complete(opt.transaction_id.promote(), true);
+    vw_out() << "Transaction " << opt.transaction_id << " complete.\n";
+    exit(0);
+  }
+
+
   if ( opt.level < 0 ||
        opt.level >= platefile->num_levels() ) {
     vw_throw( ArgumentErr() << "In correct level selection, "
-              << opt.level << ".\n\nPlatefile " << opt.url << " has "
+              << opt.level << ".\n\nPlatefile " << opt.url.string() << " has "
               << platefile->num_levels() << " levels internally.\n" );
   }
 
@@ -394,6 +418,8 @@ void do_run( Options& opt, ReduceBase<ReduceT>& reduce ) {
   }
   vw_out() << "Job " << opt.job_id << "/" << opt.num_jobs << " has "
            << mworkunits.size() << " work units.\n";
+
+  platefile->write_request();
 
   switch(platefile->pixel_format()) {
   case VW_PIXEL_GRAYA:
@@ -427,6 +453,8 @@ void do_run( Options& opt, ReduceBase<ReduceT>& reduce ) {
   default:
     vw_throw(InputErr() << "Platefile contains a pixel type thats unsupported.\n" );
   }
+
+  platefile->write_complete();
 }
 
 int main( int argc, char *argv[] ) {

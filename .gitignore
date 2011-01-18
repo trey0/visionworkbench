@@ -68,7 +68,6 @@ Makefile.in
 /src/vw/Cartography/tests/*.cxx
 /src/vw/Geometry/tests/*.cxx
 /src/vw/HDR/tests/*.cxx
-/src/vw/Mosaic/tests/*.cxx
 
 # Documentation intermediates
 docs/workbook/*.aux
@@ -116,6 +115,7 @@ docs/workbook/workbook.toc
 /src/vw/FileIO/tests/TestEndianness
 /src/vw/FileIO/tests/TestExtTester
 /src/vw/FileIO/tests/TestGDALFeatures
+/src/vw/FileIO/tests/nodata.tif
 /src/vw/Geometry/tests/TestSpatialTree
 /src/vw/Geometry/tests/TestSphere
 /src/vw/GPU/Shaders.cc
@@ -137,11 +137,14 @@ docs/workbook/workbook.toc
 /src/vw/Image/tests/TestImageMath
 /src/vw/Image/tests/TestImageResource
 /src/vw/Image/tests/TestImageView
+/src/vw/Image/tests/TestImageViewMemory
 /src/vw/Image/tests/TestImageViewRef
 /src/vw/Image/tests/TestInterpolation
 /src/vw/Image/tests/TestManipulation
-/src/vw/Image/tests/TestMaskViews
+/src/vw/Image/tests/TestMaskedImageMath
 /src/vw/Image/tests/TestMaskedPixelMath
+/src/vw/Image/tests/TestMaskedPixelMath2
+/src/vw/Image/tests/TestMaskViews
 /src/vw/Image/tests/TestPerPixelAccessorViews
 /src/vw/Image/tests/TestPerPixelViews
 /src/vw/Image/tests/TestPixelMath
@@ -172,13 +175,12 @@ docs/workbook/workbook.toc
 /src/vw/Math/tests/TestPoseEstimation
 /src/vw/Math/tests/TestQuaternion
 /src/vw/Math/tests/TestVector
-/src/vw/Plate/amqp_perftest
+/src/vw/Mosaic/tests/TestImageComposite
 /src/vw/Plate/hirise2tif
 /src/vw/Plate/image2plate
 /src/vw/Plate/index_client
 /src/vw/Plate/index_perftest
 /src/vw/Plate/index_server
-/src/vw/Plate/lustre_torture
 /src/vw/Plate/plate2dem
 /src/vw/Plate/plate2plate
 /src/vw/Plate/plate2tiles
@@ -186,19 +188,17 @@ docs/workbook/workbook.toc
 /src/vw/Plate/rebuild_index
 /src/vw/Plate/rpc_tool
 /src/vw/Plate/snapshot
-/src/vw/Plate/wms_client
-/src/vw/Plate/wms_server
-/src/vw/Plate/tests/TestAmqp
+/src/vw/Plate/blob_file_dump
+/src/vw/Plate/tiles2plate
 /src/vw/Plate/tests/TestBlobIO
-/src/vw/Plate/tests/TestBlobIterator
 /src/vw/Plate/tests/TestBlobManager
+/src/vw/Plate/tests/TestHTTPUtils
 /src/vw/Plate/tests/TestIndexPage
 /src/vw/Plate/tests/TestLocalIndex
 /src/vw/Plate/tests/TestModPlate
-/src/vw/Plate/tests/TestPlateIndexServer
+/src/vw/Plate/tests/TestRpc
+/src/vw/Plate/tests/TestRpcChannel
 /src/vw/Plate/tests/TestTileManipulation
-/src/vw/Plate/tests/TestHTTPUtils
-/src/vw/Plate/tiles2plate
 /src/vw/Python/vw/_*.cpp
 /src/vw/Python/vw/_*.h
 /src/vw/Python/vw/*.loT

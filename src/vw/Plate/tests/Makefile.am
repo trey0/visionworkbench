@@ -13,28 +13,37 @@ check_SCRIPTS  =
 
 if MAKE_MODULE_PLATE
 
-TestAmqp_SOURCES              = TestAmqp.cxx
+protocol_headers = TestRpcService.pb.h
+protocol_sources = TestRpcService.pb.cc
+
+BUILT_SOURCES = $(protocol_sources)
+
 TestBlobIO_SOURCES            = TestBlobIO.cxx
 TestBlobManager_SOURCES       = TestBlobManager.cxx
 TestHTTPUtils_SOURCES         = TestHTTPUtils.cxx
 TestIndexPage_SOURCES         = TestIndexPage.cxx
 TestLocalIndex_SOURCES        = TestLocalIndex.cxx
 TestModPlate_SOURCES          = TestModPlate.cxx
+TestRpc_SOURCES               = TestRpc.cxx $(protocol_sources)
+TestRpcChannel_SOURCES        = TestRpcChannel.cxx
 TestTileManipulation_SOURCES  = TestTileManipulation.cxx
+TestPlateManager_SOURCES      = TestPlateManager.cxx
 
 if HAVE_PYTHON
 check_SCRIPTS  += TestModPlateRegression.py
 endif
 
 check_PROGRAMS = \
-  TestAmqp \
   TestBlobIO \
   TestBlobManager \
   TestHTTPUtils \
   TestIndexPage \
   TestLocalIndex \
   TestModPlate \
-  TestTileManipulation
+  TestRpc \
+  TestRpcChannel \
+  TestTileManipulation \
+  TestPlateManager
 
 if MAKE_MODPLATE
 MORE_FLAGS = -DVW_HAVE_APACHE=1
@@ -56,3 +65,4 @@ CLEANFILES =
 
 include $(top_srcdir)/config/rules.mak
 include $(top_srcdir)/config/tests.am
+include $(top_srcdir)/thirdparty/protobuf.mak

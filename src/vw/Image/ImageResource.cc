@@ -399,10 +399,10 @@ void vw::convert( ImageBuffer const& dst, ImageBuffer const& src, bool rescale )
     }
   }
 
-  int32 src_channels = num_channels( src.format.pixel_format );
-  int32 dst_channels = num_channels( dst.format.pixel_format );
-  ptrdiff_t src_chstride = channel_size( src.format.channel_type );
-  ptrdiff_t dst_chstride = channel_size( dst.format.channel_type );
+  size_t src_channels = num_channels( src.format.pixel_format );
+  size_t dst_channels = num_channels( dst.format.pixel_format );
+  size_t src_chstride = channel_size( src.format.channel_type );
+  size_t dst_chstride = channel_size( dst.format.channel_type );
 
   int32 copy_length = (src_channels==dst_channels) ? src_channels : (src_channels<3) ? 1 : (dst_channels>=3) ? 3 : 0;
 
@@ -437,13 +437,13 @@ void vw::convert( ImageBuffer const& dst, ImageBuffer const& src, bool rescale )
 
   uint8 *src_ptr_p = (uint8*)src.data;
   uint8 *dst_ptr_p = (uint8*)dst.data;
-  for( int32 p=0; p<src.format.planes; ++p ) {
+  for( uint32 p=0; p<src.format.planes; ++p ) {
     uint8 *src_ptr_r = src_ptr_p;
     uint8 *dst_ptr_r = dst_ptr_p;
-    for( int32 r=0; r<src.format.rows; ++r ) {
+    for( uint32 r=0; r<src.format.rows; ++r ) {
       uint8 *src_ptr_c = src_ptr_r;
       uint8 *dst_ptr_c = dst_ptr_r;
-      for( int32 c=0; c<src.format.cols; ++c ) {
+      for( uint32 c=0; c<src.format.cols; ++c ) {
 
         // Setup the buffers, adjusting premultiplication if needed
         uint8 *src_ptr = src_ptr_c;
@@ -513,4 +513,14 @@ void vw::convert( ImageBuffer const& dst, ImageBuffer const& src, bool rescale )
     src_ptr_p += src.pstride;
     dst_ptr_p += dst.pstride;
   }
+}
+
+ImageFormat SrcImageResource::format() const {
+  ImageFormat fmt;
+  fmt.cols         = this->cols();
+  fmt.rows         = this->rows();
+  fmt.planes       = this->planes();
+  fmt.pixel_format = this->pixel_format();
+  fmt.channel_type = this->channel_type();
+  return fmt;
 }

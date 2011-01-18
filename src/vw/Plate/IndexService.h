@@ -8,7 +8,7 @@
 #ifndef __VW_PLATE_INDEX_SERVICE_H__
 #define __VW_PLATE_INDEX_SERVICE_H__
 
-#include <vw/Core/FundamentalTypes.h>
+#include <vw/Plate/FundamentalTypes.h>
 #include <vw/Plate/IndexService.pb.h>
 #include <boost/shared_ptr.hpp>
 
@@ -32,12 +32,12 @@ namespace platefile {
 
     // Private methods
     std::vector<std::string> glob_plate_filenames(std::string const& root_directory);
-    IndexServiceRecord add_index(std::string root_directory, std::string plate_filename,
-                                 boost::shared_ptr<Index> index);
+    IndexServiceRecord* add_index(std::string root_directory, std::string plate_filename,
+                                  boost::shared_ptr<Index> index);
 
-    /// Fetch an IndexServiceRecord for a given platefile_id, or throw an
-    /// exception if no record is found.
-    IndexServiceRecord get_index_record_for_platefile_id(int platefile_id);
+    IndexServiceRecord* find_id(int32 platefile_id);
+    IndexServiceRecord  find_id_throw(int32 platefile_id);
+    IndexServiceRecord* find_name(const std::string& name);
 
   public:
 
@@ -82,18 +82,18 @@ namespace platefile {
 
     virtual void WriteUpdate(::google::protobuf::RpcController* controller,
                              const ::vw::platefile::IndexWriteUpdate* request,
-                             ::vw::platefile::RpcNullMessage* response,
+                             ::vw::platefile::RpcNullMsg* response,
                              ::google::protobuf::Closure* done);
 
     // Like WriteUpdate, but packetizes updates.
     virtual void MultiWriteUpdate(::google::protobuf::RpcController* controller,
                              const ::vw::platefile::IndexMultiWriteUpdate* request,
-                             ::vw::platefile::RpcNullMessage* response,
+                             ::vw::platefile::RpcNullMsg* response,
                              ::google::protobuf::Closure* done);
 
     virtual void WriteComplete(::google::protobuf::RpcController* controller,
                                const ::vw::platefile::IndexWriteComplete* request,
-                               ::vw::platefile::RpcNullMessage* response,
+                               ::vw::platefile::RpcNullMsg* response,
                                ::google::protobuf::Closure* done);
 
     virtual void TransactionRequest(::google::protobuf::RpcController* controller,
@@ -103,12 +103,12 @@ namespace platefile {
 
     virtual void TransactionComplete(::google::protobuf::RpcController* controller,
                                      const ::vw::platefile::IndexTransactionComplete* request,
-                                     ::vw::platefile::RpcNullMessage* response,
+                                     ::vw::platefile::RpcNullMsg* response,
                                      ::google::protobuf::Closure* done);
 
     virtual void TransactionFailed(::google::protobuf::RpcController* controller,
                                    const ::vw::platefile::IndexTransactionFailed* request,
-                                   ::vw::platefile::RpcNullMessage* response,
+                                   ::vw::platefile::RpcNullMsg* response,
                                    ::google::protobuf::Closure* done);
 
     virtual void TransactionCursor(::google::protobuf::RpcController* controller,
@@ -123,7 +123,7 @@ namespace platefile {
 
     virtual void LogRequest(::google::protobuf::RpcController* controller,
                             const ::vw::platefile::IndexLogRequest* request,
-                            ::vw::platefile::RpcNullMessage* response,
+                            ::vw::platefile::RpcNullMsg* response,
                             ::google::protobuf::Closure* done);
 
     // A simple message that echos back the value that was sent.

@@ -89,6 +89,17 @@ namespace {
     // Register all GDAL file readers and writers and open the data set.
     GDALAllRegister();
   }
+
+  bool blocksize_whitelist(const GDALDriver* driver) {
+    // These drivers are mostly known to report good data
+    static const size_t DRIVER_COUNT = 4;
+    static const char drivers[DRIVER_COUNT][7] = {"GTiff", "ISIS3", "JP2ECW", "JP2KAK"};
+
+    for (size_t i = 0; i < DRIVER_COUNT; ++i)
+      if (driver == GetGDALDriverManager()->GetDriverByName(drivers[i]))
+        return true;
+    return false;
+  }
 }
 
 void vw::UnloadGDAL() {
@@ -274,7 +285,7 @@ namespace vw {
     m_dataset_cache_handle.reset();
   }
 
-  bool DiskImageResourceGDAL::has_nodata_value() const {
+  bool DiskImageResourceGDAL::nodata_read_ok(double& value) const {
     Mutex::Lock lock(*gdal_mutex_ptr);
     boost::shared_ptr<GDALDataset> dataset = get_dataset_ptr();
     if( dataset == NULL ) {
@@ -282,27 +293,24 @@ namespace vw {
                 << "Are you sure the file is open?" );
     }
     int success;
-    dataset->GetRasterBand(1)->GetNoDataValue(&success);
+    value = dataset->GetRasterBand(1)->GetNoDataValue(&success);
     return success;
   }
 
-  double DiskImageResourceGDAL::nodata_value() const {
-    Mutex::Lock lock(*gdal_mutex_ptr);
-    boost::shared_ptr<GDALDataset> dataset = get_dataset_ptr();
-    if( dataset == NULL ) {
-      vw_throw( IOErr() << "DiskImageResourceGDAL: Failed to read no data value.  "
-                << "Are you sure the file is open?" );
-    }
-    int success;
-    double val = dataset->GetRasterBand(1)->GetNoDataValue(&success);
-    if (!success) {
-      vw_throw( IOErr() << "DiskImageResourceGDAL: Error reading nodata value.  "
-                << "This dataset does not have a nodata value.");
-    }
+  bool DiskImageResourceGDAL::has_nodata_read() const {
+    double value;
+    return nodata_read_ok(value);
+  }
+
+  double DiskImageResourceGDAL::nodata_read() const {
+    double val;
+    bool ok = nodata_read_ok(val);
+    VW_ASSERT(ok, IOErr() << "DiskImageResourceGDAL: Error reading nodata value.  "
+                          << "This dataset does not have a nodata value.");
     return val;
   }
 
-  void DiskImageResourceGDAL::set_nodata_value( double v ) {
+  void DiskImageResourceGDAL::set_nodata_write( double v ) {
     Mutex::Lock lock(*gdal_mutex_ptr);
     boost::shared_ptr<GDALDataset> dataset = get_dataset_ptr();
     if( dataset == NULL )
@@ -490,19 +498,19 @@ namespace vw {
     if (!dataset)
       vw_throw(LogicErr() << "DiskImageResourceGDAL: Could not get native block size.  No file is open.");
 
+    GDALRasterBand *band = dataset->GetRasterBand(1);
+    int xsize, ysize;
+    band->GetBlockSize(&xsize,&ysize);
+
     // GDAL assumes a single-row stripsize even for file formats like PNG for
-    // which it does not support true strip access.  Thus, we check the file
-    // driver type before accepting GDAL's suggested block size.
-    if ( dataset->GetDriver() == GetGDALDriverManager()->GetDriverByName("GTiff") ||
-         dataset->GetDriver() == GetGDALDriverManager()->GetDriverByName("ISIS3") ||
-         dataset->GetDriver() == GetGDALDriverManager()->GetDriverByName("JP2ECW") ||
-         dataset->GetDriver() == GetGDALDriverManager()->GetDriverByName("JP2KAK") ) {
-      GDALRasterBand *band = dataset->GetRasterBand(1);
-      int xsize, ysize;
-      band->GetBlockSize(&xsize,&ysize);
-      return Vector2i(xsize,ysize);
+    // which it does not support true strip access. If it looks like it did
+    // that (single-line block) only trust it if it's on the whitelist.
+    if (ysize == 1 && !blocksize_whitelist(dataset->GetDriver())) {
+      xsize = cols();
+      ysize = rows();
     }
-    return Vector2i(cols(),rows());
+
+    return Vector2i(xsize, ysize);
   }
 
   /// Set gdal's internal cache size (in bytes)
@@ -575,8 +583,8 @@ namespace vw {
 
       GDALDataType gdal_pix_fmt = vw_channel_id_to_gdal_pix_fmt::value(channel_type());
       // We've already ensured that either planes==1 or channels==1.
-      for (int32 p = 0; p < dst.format.planes; p++) {
-        for (int32 c = 0; c < num_channels(dst.format.pixel_format); c++) {
+      for (uint32 p = 0; p < dst.format.planes; p++) {
+        for (uint32 c = 0; c < num_channels(dst.format.pixel_format); c++) {
           GDALRasterBand *band = get_dataset_ptr()->GetRasterBand(c+p+1);
 
           band->RasterIO( GF_Write, bbox.min().x(), bbox.min().y(), bbox.width(), bbox.height(),
@@ -593,13 +601,17 @@ namespace vw {
   //
   // Be careful here -- you can set any block size here, but you
   // choice may lead to extremely inefficient FileIO operations.
-  void DiskImageResourceGDAL::set_block_size(Vector2i const& block_size) {
+  void DiskImageResourceGDAL::set_block_write_size(Vector2i const& block_size) {
     m_blocksize = block_size;
     Mutex::Lock lock(*gdal_mutex_ptr);
     initialize_write_resource();
   }
 
-  Vector2i DiskImageResourceGDAL::block_size() const {
+  Vector2i DiskImageResourceGDAL::block_write_size() const {
+    return m_blocksize;
+  }
+
+  Vector2i DiskImageResourceGDAL::block_read_size() const {
     return m_blocksize;
   }
 
