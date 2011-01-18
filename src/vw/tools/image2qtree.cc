@@ -83,7 +83,9 @@ struct Options {
     help(false),
     normalize(false),
     terrain(false),
-    manual(false) {}
+    manual(false),
+    global(false)
+    {}
 
   std::vector<string> input_files;
 
@@ -108,6 +110,7 @@ struct Options {
   bool normalize;
   bool terrain;
   bool manual;
+  bool global;
 
   struct {
     uint32 draw_order_offset;
@@ -141,11 +144,13 @@ struct Options {
     if(output_file_name.empty())
       output_file_name = fs::path(input_files[0]).replace_extension().string();
 
-    if (north.set() || south.set() || east.set() || west.set()) {
+    if (global || north.set() || south.set() || east.set() || west.set()) {
       VW_ASSERT(input_files.size() == 1,
           Usage() << "Cannot override georeference information on multiple images");
-      VW_ASSERT(north.set() && south.set() && east.set() && west.set(),
+      VW_ASSERT(global || (north.set() && south.set() && east.set() && west.set()),
           Usage() << "If you provide one, you must provide all of: --north --south --east --west");
+      if (global)
+        north = 90; south = -90; east = 180; west = -180;
       manual = true;
     }
 
@@ -244,9 +249,9 @@ GeoReference make_input_georef(DiskImageResourceGDAL& file, const Options& opt) 
 
   if( opt.manual ) {
     Matrix3x3 m;
-    m(0,0) = (opt.east - opt.west) / file.cols();
+    m(0,0) = double(opt.east - opt.west) / file.cols();
     m(0,2) = opt.west;
-    m(1,1) = (opt.south - opt.north) / file.rows();
+    m(1,1) = double(opt.south - opt.north) / file.rows();
     m(1,2) = opt.north;
     m(2,2) = 1;
     input_georef.set_transform( m );
@@ -338,7 +343,6 @@ void do_mosaic(const Options& opt, const ProgressCallback *progress)
   int xresolution = total_resolution / opt.aspect_ratio, yresolution = total_resolution;
 
   GeoReference output_georef = config->output_georef(xresolution, yresolution);
-  output_georef.set_datum( georeferences[0].datum() );
   vw_out(VerboseDebugMessage, "tool") << "Output Georef:\n" << output_georef << endl;
 
   // Configure the composite.
@@ -375,6 +379,7 @@ void do_mosaic(const Options& opt, const ProgressCallback *progress)
     }
     else
       source = crop( transform( source, geotx ), bbox );
+
     // Images that wrap the date line must be added to the composite on both sides.
     if( bbox.max().x() > total_resolution ) {
       composite.insert( source, bbox.min().x()-total_resolution, bbox.min().y() );
@@ -385,14 +390,15 @@ void do_mosaic(const Options& opt, const ProgressCallback *progress)
     }
   }
 
-  BBox2i bbox = composite.bbox();
-  BBox2i data_bbox;
-  BBox2i total_bbox;
-  BBox2 ll_bbox;
-  // Now we differ a bit based on our output.
+  // This box represents the entire input data set, in pixels, in the output
+  // projection space. This should NOT include the extra data used to hide
+  // seams and such.
+  BBox2i total_bbox = composite.bbox();
+  total_bbox.crop(BBox2i(0,0,xresolution,yresolution));
+
   if(opt.mode == Mode::KML) {
+    BBox2i bbox = total_bbox;
     // Compute a tighter Google Earth coordinate system aligned bounding box.
-    bbox.crop( BBox2i(0,0,xresolution,yresolution) );
     int dim = 2 << (int)(log( (double)(std::max)(bbox.width(),bbox.height()) )/log(2.));
     if( dim > total_resolution ) dim = total_resolution;
     total_bbox = BBox2i( (bbox.min().x()/dim)*dim, (bbox.min().y()/dim)*dim, dim, dim );
@@ -402,29 +408,6 @@ void do_mosaic(const Options& opt, const ProgressCallback *progress)
       if( total_bbox.max().y() == yresolution ) total_bbox.min().y() -= dim;
       else total_bbox.max().y() += dim;
     }
-
-    ll_bbox = BBox2( -180.0 + (360.0*total_bbox.min().x())/xresolution,
-                      180.0 - (360.0*total_bbox.max().y())/yresolution,
-                      (360.0*total_bbox.width())/xresolution,
-                      (360.0*total_bbox.height())/yresolution );
-  } else if (opt.mode == Mode::GIGAPAN) {
-    total_bbox = bbox;
-    bbox.crop( BBox2i(0,0,xresolution,yresolution) );
-    ll_bbox = BBox2( -180.0 + (360.0*total_bbox.min().x())/xresolution,
-                      180.0 - (360.0*total_bbox.max().y())/yresolution,
-                      (360.0*total_bbox.width())/xresolution,
-                      (360.0*total_bbox.height())/yresolution );
-  } else {
-    total_bbox = composite.bbox();
-    total_bbox.grow( BBox2i(0,0,total_resolution,total_resolution) );
-    total_bbox.crop( BBox2i(0,0,total_resolution,total_resolution) );
-
-    Vector2 invmin = output_georef.pixel_to_lonlat(total_bbox.min());
-    Vector2 invmax = output_georef.pixel_to_lonlat(total_bbox.max());
-    ll_bbox.min().x() = invmin[0];
-    ll_bbox.max().y() = invmin[1];
-    ll_bbox.max().x() = invmax[0];
-    ll_bbox.min().y() = invmax[1];
   }
 
   // Prepare the composite.
@@ -432,22 +415,15 @@ void do_mosaic(const Options& opt, const ProgressCallback *progress)
     composite.set_draft_mode( true );
   composite.prepare( total_bbox, *progress );
 
-  // Data bbox.
-  if(opt.mode == Mode::KML || opt.mode == Mode::GIGAPAN) {
-    data_bbox = composite.bbox();
-    data_bbox.crop( BBox2i(0,0,total_bbox.width(),total_bbox.height()) );
-  } else {
-    data_bbox = BBox2i((int)std::floor(double(bbox.min().x())/opt.tile_size)*opt.tile_size,
-                       (int)std::floor(double(bbox.min().y())/opt.tile_size)*opt.tile_size,
-                       (int)std::ceil(double(bbox.width())/opt.tile_size)*opt.tile_size,
-                       (int)std::ceil(double(bbox.height())/opt.tile_size)*opt.tile_size);
-    data_bbox.crop(total_bbox);
-  }
-
   QuadTreeGenerator quadtree( composite, opt.output_file_name );
 
   if( opt.mode == Mode::KML ) {
     KMLQuadTreeConfig *c2 = dynamic_cast<KMLQuadTreeConfig*>(config.get());
+    BBox2 ll_bbox( -180.0 + (360.0*total_bbox.min().x())/xresolution,
+                    180.0 - (360.0*total_bbox.max().y())/yresolution,
+                    (360.0*total_bbox.width())/xresolution,
+                    (360.0*total_bbox.height())/yresolution );
+
     c2->set_longlat_bbox( ll_bbox );
     c2->set_max_lod_pixels( opt.kml.max_lod_pixels );
     c2->set_draw_order_offset( opt.kml.draw_order_offset );
@@ -456,16 +432,26 @@ void do_mosaic(const Options& opt, const ProgressCallback *progress)
     c2->set_terrain(opt.terrain);
   } else if ( opt.mode == Mode::GIGAPAN ) {
     GigapanQuadTreeConfig *c2 = dynamic_cast<GigapanQuadTreeConfig*>(config.get());
+    BBox2 ll_bbox( -180.0 + (360.0*total_bbox.min().x())/xresolution,
+                    180.0 - (360.0*total_bbox.max().y())/yresolution,
+                    (360.0*total_bbox.width())/xresolution,
+                    (360.0*total_bbox.height())/yresolution );
     c2->set_longlat_bbox( ll_bbox );
   }
 
   config->configure(quadtree);
 
-  quadtree.set_crop_bbox(data_bbox);
   if (opt.tile_size.set())
     quadtree.set_tile_size(opt.tile_size);
   if (opt.output_file_type.set())
     quadtree.set_file_type(opt.output_file_type);
+
+  // This box represents the input data, shifted such that total_bbox.min() is
+  // the origin, and cropped to the size of the output resolution.
+  BBox2i data_bbox = composite.bbox();
+  data_bbox.crop( BBox2i(0,0,total_bbox.width(),total_bbox.height()));
+
+  quadtree.set_crop_bbox(data_bbox);
 
   // Generate the composite.
   vw_out() << "Generating " << opt.mode.string() << " overlay..." << endl;
@@ -565,19 +551,20 @@ int handle_options(int argc, char *argv[], Options& opt) {
     ("aspect-ratio"     , po::value(&opt.aspect_ratio)                           , "Pixel aspect ratio (for polar overlays; should be a power of two)")
     ("global-resolution", po::value(&opt.global_resolution)                      , "Override the global pixel resolution; should be a power of two");
 
-  po::options_description projection_options("Projection Options");
+  po::options_description projection_options("Input Projection Options");
   projection_options.add_options()
     ("north"      ,  po::value(&opt.north)         , "The northernmost latitude in projection units")
     ("south"      ,  po::value(&opt.south)         , "The southernmost latitude in projection units")
     ("east"       ,  po::value(&opt.east)          , "The easternmost longitude in projection units")
     ("west"       ,  po::value(&opt.west)          , "The westernmost longitude in projection units")
+    ("global"     ,  po::bool_switch(&opt.global)  , "Override image size to global (in lonlat)")
     ("projection" ,  po::value(&opt.proj.type)     , proj_desc.c_str())
-    ("utm-zone"   ,  po::value(&opt.proj.utm_zone) , "Set zone for --projection UTM (+ is North)")
+    ("utm-zone"   ,  po::value(&opt.proj.utm_zone) , "Set zone for --projection UTM (negative for south)")
     ("proj-lat"   ,  po::value(&opt.proj.lat)      , "The center of projection latitude")
     ("proj-lon"   ,  po::value(&opt.proj.lon)      , "The center of projection longitude")
     ("proj-scale" ,  po::value(&opt.proj.scale)    , "The projection scale")
-    ("p1"         ,  po::value(&opt.proj.p1)       , "Standard parallels for Lambert Conformal Conic projection")
-    ("p2"         ,  po::value(&opt.proj.p2)       , "Standard parallels for Lambert Conformal Conic projection")
+    ("p1"         ,  po::value(&opt.proj.p1)       , "parallel for Lambert Conformal Conic projection")
+    ("p2"         ,  po::value(&opt.proj.p2)       , "parallel for Lambert Conformal Conic projection")
     ("nudge-x"    ,  po::value(&opt.nudge_x)       , "Nudge the image, in projected coordinates")
     ("nudge-y"    ,  po::value(&opt.nudge_y)       , "Nudge the image, in projected coordinates");
 
@@ -586,7 +573,7 @@ int handle_options(int argc, char *argv[], Options& opt) {
     ("input-file", po::value(&opt.input_files));
 
   po::options_description options("Allowed Options");
-  options.add(general_options).add(input_options).add(output_options).add(projection_options).add(hidden_options);
+  options.add(general_options).add(input_options).add(projection_options).add(output_options).add(hidden_options);
 
   po::positional_options_description p;
   p.add("input-file", -1);
@@ -599,8 +586,10 @@ int handle_options(int argc, char *argv[], Options& opt) {
   usage << projection_options << endl;
 
   try {
+    namespace ps = po::command_line_style;
+    int style = ps::unix_style & ~ps::allow_guessing;
     po::variables_map vm;
-    po::store( po::command_line_parser( argc, argv ).options(options).positional(p).run(), vm );
+    po::store( po::command_line_parser( argc, argv ).style(style).options(options).positional(p).run(), vm );
     po::notify( vm );
     opt.validate();
   } catch (const po::error& e) {
