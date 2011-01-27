@@ -775,3 +775,48 @@ TEST(LinearAlgebra, RankAndNullspace) {
     EXPECT_EQ( nullity(shark), 2);
   }
 }
+
+TEST(LinearAlgebra, LU_Decomposition) {
+  {
+    Matrix<float> a(3,3);
+    a(0,0) = 1; a(0,1) = 2; a(0,2) = 3;
+    a(1,0) = 4; a(1,1) = 5; a(1,2) = 6;
+    a(2,0) = 7; a(2,1) = 8; a(2,2) = 0;
+
+    LUD<float> decomposition(a);
+
+    // if X = [4;5;6]
+    Vector3f b1(32,77,68);
+    // if X = [1.7;-3.9;0.3]
+    Vector3f b2(-5.2,-10.9,-19.3);
+
+    double tol = 1e-4;
+    Vector<float> result = decomposition.solve(b1);
+    ASSERT_EQ( 3, result.size() );
+    EXPECT_VECTOR_NEAR( Vector3f(4,5,6), result, tol );
+    result = decomposition.solve(b2);
+    ASSERT_EQ( 3, result.size() );
+    EXPECT_VECTOR_NEAR( Vector3f(1.7,-3.9,0.3), result, tol );
+
+    // Try again with doubles
+    Matrix<double> ad = a;
+    LUD<double> decompositiond(ad);
+    Vector<double> resultd = decompositiond.solve(b1);
+    ASSERT_EQ( 3, resultd.size() );
+    EXPECT_VECTOR_NEAR( Vector3(4,5,6), resultd, tol );
+    resultd = decompositiond.solve(b2);
+    ASSERT_EQ( 3, resultd.size() );
+    EXPECT_VECTOR_NEAR( Vector3(1.7,-3.9,0.3), resultd, tol );
+
+    // Check for singular
+    a(2,2) = 9;
+    EXPECT_THROW( LUD<float> monkey(a),
+                  ArgumentErr );
+  }
+  {
+    // Test Non Square Error
+    Matrix<double> a(4,3);
+    EXPECT_THROW( LUD<double> monkey(a),
+                  ArgumentErr );
+  }
+}
