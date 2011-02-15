@@ -1,46 +1,47 @@
-#ifndef __VW_FILEIO_PNGIO_H__
-#define __VW_FILEIO_PNGIO_H__
+#ifndef __VW_FILEIO_GDALIO_H__
+#define __VW_FILEIO_GDALIO_H__
 
 #include <vw/FileIO/ScanlineIO.h>
 
 extern "C" {
-#include <png.h>
+#include <gdal_priv.h>
+#include <cpl_multiproc.h>
 }
 
-
 namespace vw {
+  class Mutex;
+
 namespace fileio {
 namespace detail {
+
+Mutex& gdal() VW_WARN_UNUSED;
 
 // These classes exist to share code between the on-disk and in-memory versions
 // of the relevant image resources. They are not intended for use by users
 // (thus the detail namespace).
 
-class PngIO {
+class GdalIODecompress : public ScanlineReadBackend {
   protected:
-    png_structp m_ctx;
-    png_infop m_info;
-};
-
-class PngIODecompress : public PngIO, public ScanlineReadBackend {
-  private:
-    bool m_read;
+    boost::shared_ptr<GDALDataset> m_dataset;
   public:
-    PngIODecompress();
-    virtual ~PngIODecompress();
+    GdalIODecompress();
+    virtual ~GdalIODecompress();
 
     void open();
     bool ready() const;
     void read(uint8* data, size_t bufsize);
 };
 
-class PngIOCompress : public PngIO, public ScanlineWriteBackend {
-  private:
-    bool m_written;
+class GdalIOCompress : public ScanlineWriteBackend {
+  protected:
+    std::string m_fn;
+    GDALDriver *m_driver;
+    boost::shared_ptr<GDALDataset> m_dataset;
+
   public:
     // cols/rows/planes ignored in imageformat
-    PngIOCompress(const ImageFormat& fmt);
-    virtual ~PngIOCompress();
+    GdalIOCompress(const ImageFormat& fmt);
+    virtual ~GdalIOCompress();
 
     void open();
     bool ready() const;

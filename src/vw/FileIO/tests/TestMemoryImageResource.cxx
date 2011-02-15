@@ -67,39 +67,37 @@ TEST_P(MemoryImageResourceTest, BasicRead) {
 }
 
 TEST_P(MemoryImageResourceTest, BasicWriteRead) {
-  typedef PixelRGB<uint8> Px;
+  typedef PixelRGBA<uint8> Px;
   ImageView<Px> src;
 
   {
-    typedef PixelRGB<float> Py;
+    typedef PixelRGBA<float> Py;
     const size_t SIZE = 64;
     ImageView<Py> src_(SIZE,SIZE);
     for (size_t row = 0; row < SIZE; ++row) {
       for (size_t col = 0; col < SIZE; ++col) {
         src_(col, row) =
-          Py(float(row)/SIZE, float(col)/SIZE, 1 - ((float(row) + col) / 2 / SIZE));
+          Py(float(row)/SIZE, float(col)/SIZE, 1 - ((float(row) + col) / 2 / SIZE), 1);
       }
     }
     // jpeg is lossy, and has trouble with noise-free images. Add some noise and blur to help it out.
     boost::rand48 gen(uint64(test::get_random_seed()));
     src_ += gaussian_noise_view(gen, 0.008, 0.004, src_);
     src = gaussian_filter(pixel_cast<Px>(normalize(src_, 0, 255)), 2, 2, 4, 4);
+    vw::fill(vw::select_channel(src, 3), 255);
   }
 
   std::string type(fs::extension(GetParam()));
-  vector<uint8> data;
-  {
-    // Set up dst to bytes go into data
-    boost::scoped_ptr<DstMemoryImageResource> r(DstMemoryImageResource::create(type, &data, src.format()));
-    write_image(*r, src);
-    // data now contains the encoded bytes
-  }
+
+  boost::scoped_ptr<SrcImageResource> src2;
+  boost::scoped_ptr<DstMemoryImageResource> dst;
+
+  ASSERT_NO_THROW(dst.reset(DstMemoryImageResource::create(type, src.format())));
+  EXPECT_NO_THROW(write_image(*dst, src));
+  ASSERT_NO_THROW(src2.reset(SrcMemoryImageResource::open(type, dst->data(), dst->size())));
 
   ImageView<Px> img1;
-  {
-    boost::scoped_ptr<SrcMemoryImageResource> r(SrcMemoryImageResource::open(type, &data[0], data.size()));
-    read_image(img1, *r);
-  }
+  read_image(img1, *src2);
 
   EXPECT_SEQ_NEAR(src, img1, 6);
 }
@@ -111,6 +109,9 @@ vector<string> test_paths() {
 #endif
 #if defined(VW_HAVE_PKG_PNG) && VW_HAVE_PKG_PNG==1
   v.push_back("rgb2x2.png");
+#endif
+#if defined(VW_HAVE_PKG_GDAL) && VW_HAVE_PKG_GDAL==1
+  v.push_back("rgb2x2.tif");
 #endif
     return v;
 }
