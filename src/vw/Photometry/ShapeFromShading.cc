@@ -291,7 +291,7 @@ ComputeBlockJacobian(ImageViewBase<ViewT1> const& inputImage, GeoReference const
     if ((ii < inputImage.impl().rows()) && (jj < inputImage.impl().cols())){
 
       //this is the small DRG and the large DEM. needs a fix.
-      Vector2 input_img_pix(jj,ii);
+      Vector2i input_img_pix(jj,ii);
 
       //update from the main image
       if (is_valid(inputImage.impl()(jj,ii)) && (shadowImage.impl()(jj, ii) == 0)){
@@ -330,7 +330,7 @@ ComputeBlockJacobian(ImageViewBase<ViewT1> const& inputImage, GeoReference const
         //------------------------------------------------------------------------------------------------------------------------------------------
         //compute the weights matrix
         if (globalParams.useWeights == 1){
-          weightsArray(r,r) = ComputeLineWeights(input_img_pix, inputImgParams.centerLine, inputImgParams.maxDistArray);
+          weightsArray(r,r) = inputImgParams.drgWeights->getWeight(input_img_pix);
         }
         else{
           weightsArray(r,r) = 1;
@@ -389,10 +389,10 @@ ComputeBlockJacobianOverlap(ImageViewBase<ViewT1> const& inputImage, GeoReferenc
 
     if ((ii < inputImage.impl().rows()) && (jj < inputImage.impl().cols())){ //is valid pixel
 
-      Vector2 input_img_pix(jj,ii);
+      Vector2i input_img_pix(jj,ii);
 
       //determine the corresponding pixel in the overlaping image
-      Vector2 overlap_pix = overlapImageGeo.lonlat_to_pixel(inputImageGeo.pixel_to_lonlat(input_img_pix));
+      Vector2i overlap_pix = overlapImageGeo.lonlat_to_pixel(inputImageGeo.pixel_to_lonlat(input_img_pix));
 
       float x = overlap_pix[0];
       float y = overlap_pix[1];
@@ -434,7 +434,7 @@ ComputeBlockJacobianOverlap(ImageViewBase<ViewT1> const& inputImage, GeoReferenc
         //-----------------------------------------------------------------------------------------------------------------
         //compute the weights matrix
         if (globalParams.useWeights == 1){
-          weightsArray(r,r) = ComputeLineWeights(overlap_pix, overlapImgParams.centerLine, overlapImgParams.maxDistArray);
+          weightsArray(r,r) = overlapImgParams.drgWeights->getWeight(overlap_pix);
         }
         else{
           weightsArray(r,r) = 1;

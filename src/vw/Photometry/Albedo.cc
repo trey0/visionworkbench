@@ -74,7 +74,7 @@ void vw::photometry::InitImageMosaic(ModelParams input_img_params,
         for (l = 0; l < input_img.cols(); ++l) {
 
            numSamples(l, k) = 0;
-           Vector2 input_image_pix(l,k);
+           Vector2i input_image_pix(l,k);
 
            if ( is_valid(input_img(l,k)) && ( shadowImage(l, k) == 0) ) {
 
@@ -87,7 +87,7 @@ void vw::photometry::InitImageMosaic(ModelParams input_img_params,
                   numSamples(l, k) = 1;
               }
               else{
-                  float weight = ComputeLineWeights(input_image_pix, input_img_params.centerLine, input_img_params.maxDistArray);
+                  float weight = input_img_params.drgWeights->getWeight(input_image_pix);
                   output_img(l, k) = ((float)input_img(l,k)*weight)/(input_img_params.exposureTime*input_img_reflectance);
                   norm(l, k) = weight;
                   numSamples(l, k) = 1;
@@ -124,7 +124,7 @@ void vw::photometry::InitImageMosaic(ModelParams input_img_params,
               Vector2 lon_lat = input_img_geo.pixel_to_lonlat(input_img_pix);
 
               //check for overlap between the output image and the input DEM image
-              Vector2 overlap_pix = overlap_geo.lonlat_to_pixel(input_img_geo.pixel_to_lonlat(input_img_pix));
+              Vector2i overlap_pix = overlap_geo.lonlat_to_pixel(input_img_geo.pixel_to_lonlat(input_img_pix));
               x = (int)overlap_pix[0];
               y = (int)overlap_pix[1];
 
@@ -143,7 +143,7 @@ void vw::photometry::InitImageMosaic(ModelParams input_img_params,
                               numSamples(l, k) = numSamples(l,k) + 1;
                           }
                           else{
-                             float weight = ComputeLineWeights(overlap_pix, overlap_img_params[i].centerLine, overlap_img_params[i].maxDistArray);
+                             float weight = overlap_img_params[i].drgWeights->getWeight(overlap_pix);
                              output_img(l, k) = (float)output_img(l, k) + ((float)overlap_img_pixel*weight)/(overlap_img_params[i].exposureTime*overlap_img_reflectance);
                              numSamples(l, k) = numSamples(l,k) + 1;
                              norm(l,k) = norm(l,k) + weight;
@@ -238,7 +238,7 @@ void vw::photometry::InitImageMosaicByBlocks(ModelParams input_img_params,
 
                  numSamples(l, k) = 0;
 
-                 Vector2 input_image_pix(jj,ii);
+                 Vector2i input_image_pix(jj,ii);
 
                  if ( is_valid(input_img(jj,ii)) && ( shadowImage(l, k) == 0)) {
 
@@ -248,7 +248,7 @@ void vw::photometry::InitImageMosaicByBlocks(ModelParams input_img_params,
                       numSamples(l, k) = 1;
                    }
                    else{
-                      float weight = ComputeLineWeights(input_image_pix, input_img_params.centerLine, input_img_params.maxDistArray);
+                       float weight = input_img_params.drgWeights->getWeight(input_image_pix);
                       output_img(jj,ii) = ((float)input_img(jj,ii)*weight)/(input_img_params.exposureTime*input_img_reflectance);
                       norm(l, k) = weight;
                       numSamples(l, k) = 1;
@@ -294,7 +294,7 @@ void vw::photometry::InitImageMosaicByBlocks(ModelParams input_img_params,
                    Vector2 lon_lat = input_img_geo.pixel_to_lonlat(input_img_pix);
 
                    //check for overlap between the output image and the input DEM image
-                   Vector2 overlap_pix = overlap_geo.lonlat_to_pixel(input_img_geo.pixel_to_lonlat(input_img_pix));
+                   Vector2i overlap_pix = overlap_geo.lonlat_to_pixel(input_img_geo.pixel_to_lonlat(input_img_pix));
                    x = (int)overlap_pix[0];
                    y = (int)overlap_pix[1];
 
@@ -313,7 +313,7 @@ void vw::photometry::InitImageMosaicByBlocks(ModelParams input_img_params,
                             numSamples(l, k) = numSamples(l,k) + 1;
                          }
                          else{
-                             float weight = ComputeLineWeights(overlap_pix, overlap_img_params[i].centerLine, overlap_img_params[i].maxDistArray);
+                             float weight = overlap_img_params[i].drgWeights->getWeight(overlap_pix);
                              output_img(jj,ii) = (float)output_img(jj,ii) + ((float)overlap_img_pixel*weight)/(overlap_img_params[i].exposureTime*overlap_img_reflectance);
                              numSamples(l, k) = numSamples(l,k) + 1;
                              norm(l,k) = norm(l,k) + weight;
@@ -406,7 +406,7 @@ void vw::photometry::UpdateImageMosaic(ModelParams input_img_params,
            nominator(l, k) = 0;
            denominator(l, k) = 0;
 
-           Vector2 input_image_pix(l,k);
+           Vector2i input_image_pix(l,k);
 
            //reject invalid pixels and pixels that are in shadow.
            if ( is_valid(input_img(l,k)) && ( shadowImage(l, k) == 0)) {
@@ -429,7 +429,7 @@ void vw::photometry::UpdateImageMosaic(ModelParams input_img_params,
                   denominator(l, k) = input_albedo_grad*input_albedo_grad;
               }
               else{
-                  float weight = ComputeLineWeights(input_image_pix, input_img_params.centerLine, input_img_params.maxDistArray);
+                  float weight = input_img_params.drgWeights->getWeight(input_image_pix);
                   nominator(l, k)   = input_albedo_grad*input_img_error*weight;
                   denominator(l, k) = input_albedo_grad*input_albedo_grad*weight;
               }
@@ -468,7 +468,7 @@ void vw::photometry::UpdateImageMosaic(ModelParams input_img_params,
          if ( is_valid(input_img(l,k)) ) {
 
               //determine the corresponding pixel in the overlapping image
-              Vector2 overlap_pix = overlap_geo.lonlat_to_pixel(input_img_geo.pixel_to_lonlat(input_img_pix));
+              Vector2i overlap_pix = overlap_geo.lonlat_to_pixel(input_img_geo.pixel_to_lonlat(input_img_pix));
               int x = (int)overlap_pix[0];
               int y = (int)overlap_pix[1];
 
@@ -495,7 +495,7 @@ void vw::photometry::UpdateImageMosaic(ModelParams input_img_params,
                          denominator(l, k) = denominator(l, k) + overlap_albedo_grad*overlap_albedo_grad;
                      }
                      else{
-                         float weight = ComputeLineWeights(overlap_pix, overlap_img_params[i].centerLine, overlap_img_params[i].maxDistArray);
+                         float weight = overlap_img_params[i].drgWeights->getWeight(overlap_pix);
                          nominator(l, k)   = nominator(l,k) + overlap_albedo_grad*overlap_img_error*weight;
                          denominator(l, k) = denominator(l,k) + overlap_albedo_grad*overlap_albedo_grad*weight;
                      }
@@ -568,16 +568,16 @@ vw::photometry::InitAlbedoMosaic(ModelParams input_img_params,
 									    BilinearInterpolation());
 
 
-    int numHorBlocks = input_img.cols()/horBlockSize + 1;
-    int numVerBlocks = input_img.rows()/verBlockSize + 1;
+    //int numHorBlocks = input_img.cols()/horBlockSize + 1;
+    //int numVerBlocks = input_img.rows()/verBlockSize + 1;
 
-    int x,y;
+    //int x,y;
     //initialize  output_img, and numSamples
     for (k = 0 ; k < input_img.rows(); ++k) {
         for (l = 0; l < input_img.cols(); ++l) {
 
            numSamples(l, k) = 0;
-           Vector2 input_image_pix(l,k);
+           Vector2i input_image_pix(l,k);
 
            if ( is_valid(input_img(l,k)) && ( shadowImage(l, k) == 0)) { //valid image point
 
@@ -601,7 +601,7 @@ vw::photometry::InitAlbedoMosaic(ModelParams input_img_params,
                           numSamples(l, k) = 1;
                       }
                       else{
-                         float weight = ComputeLineWeights(input_image_pix, input_img_params.centerLine, input_img_params.maxDistArray);
+                          float weight = input_img_params.drgWeights->getWeight(input_image_pix);
                          output_img(l, k) = ((float)input_img(l,k)*weight)/(input_img_params.exposureTime*input_img_reflectance);
                          norm(l, k) = weight;
                          numSamples(l, k) = 1;
@@ -653,7 +653,7 @@ vw::photometry::InitAlbedoMosaic(ModelParams input_img_params,
                 if (is_valid(interp_reflectance_image(x,y))){
                  
                   //check for overlap between the output image and the input DEM image
-                  Vector2 overlap_pix = overlap_geo.lonlat_to_pixel(input_img_geo.pixel_to_lonlat(input_img_pix));
+                  Vector2i overlap_pix = overlap_geo.lonlat_to_pixel(input_img_geo.pixel_to_lonlat(input_img_pix));
                   float overlap_x = overlap_pix[0];
                   float overlap_y = overlap_pix[1];
 
@@ -674,7 +674,7 @@ vw::photometry::InitAlbedoMosaic(ModelParams input_img_params,
                               numSamples(l, k) = numSamples(l,k) + 1;
                           }
                           else{
-                             float weight = ComputeLineWeights(overlap_pix, overlap_img_params[i].centerLine, overlap_img_params[i].maxDistArray);
+                             float weight = overlap_img_params[i].drgWeights->getWeight(overlap_pix);
                              output_img(l, k) = (float)output_img(l, k) + ((float)overlap_img_pixel*weight)/(overlap_img_params[i].exposureTime*overlap_img_reflectance);
                              numSamples(l, k) = numSamples(l,k) + 1;
                              norm(l,k) = norm(l,k) + weight;
@@ -778,7 +778,7 @@ vw::photometry::UpdateAlbedoMosaic(ModelParams input_img_params,
            nominator(l, k) = 0;
            denominator(l, k) = 0;
 
-           Vector2 input_image_pix(l,k);
+           Vector2i input_image_pix(l,k);
 
            //reject invalid pixels and pixels that are in shadow.
            if ( is_valid(input_img(l,k)) && ( shadowImage(l, k) == 0)) {
@@ -848,7 +848,7 @@ vw::photometry::UpdateAlbedoMosaic(ModelParams input_img_params,
                          denominator(l, k) = input_albedo_grad*input_albedo_grad;
                          }
                      else{
-                         float weight = ComputeLineWeights(input_image_pix, input_img_params.centerLine, input_img_params.maxDistArray);
+                         float weight = input_img_params.drgWeights->getWeight(input_image_pix);
                          nominator(l, k)   = input_albedo_grad*input_img_error*weight;
                          denominator(l, k) = input_albedo_grad*input_albedo_grad*weight;
                      }
@@ -933,7 +933,7 @@ vw::photometry::UpdateAlbedoMosaic(ModelParams input_img_params,
                   Vector3 normal = computeNormalFrom3DPointsGeneral(xyz, xyz_left, xyz_top);
 
                   //check for overlap between the output image and the input DEM image
-                  Vector2 overlap_pix = overlap_geo.lonlat_to_pixel(input_img_geo.pixel_to_lonlat(input_img_pix));
+                  Vector2i overlap_pix = overlap_geo.lonlat_to_pixel(input_img_geo.pixel_to_lonlat(input_img_pix));
                   x = (int)overlap_pix[0];
                   y = (int)overlap_pix[1];
 
@@ -962,7 +962,7 @@ vw::photometry::UpdateAlbedoMosaic(ModelParams input_img_params,
                          else{
 
                            //float weight = ComputeWeights(overlap_pix, overlap_img_params[i].center2D, overlap_img_params[i].maxDistance);
-                            float weight = ComputeLineWeights(overlap_pix, overlap_img_params[i].centerLine, overlap_img_params[i].maxDistArray);
+                            float weight = overlap_img_params[i].drgWeights->getWeight(overlap_pix);
                             nominator(l, k)   = nominator(l,k) + overlap_albedo_grad*overlap_img_error*weight;
                             denominator(l, k) = denominator(l,k) + overlap_albedo_grad*overlap_albedo_grad*weight;
                          }

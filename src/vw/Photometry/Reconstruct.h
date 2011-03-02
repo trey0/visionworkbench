@@ -17,6 +17,7 @@
 #include <iostream>
 #include <string>
 #include <vw/Math/Vector.h>
+#include "Weights.h"
 
 namespace vw {
 namespace photometry {
@@ -54,6 +55,9 @@ namespace photometry {
     Vector3 sunPosition; //relative to the center of the Moon
     Vector3 spacecraftPosition;//relative to the center of the planet
     
+    DrgFeatherWeights* drgWeights;
+    DemFeatherWeights* demWeights;
+#if 0
     int *centerLine;
     int *maxDistArray;
     int *centerLineDEM;
@@ -62,6 +66,7 @@ namespace photometry {
     int *maxVerDistArray;
     int *horCenterLineDEM;
     int *maxVerDistArrayDEM;
+#endif
     
     /*
     vector<int> centerLine;

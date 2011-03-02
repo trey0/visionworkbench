@@ -75,7 +75,7 @@ void vw::photometry::InitDEM( ModelParams input_img_params,
       numSamples(l, k) = 0;
       norm(l,k) = 0;
 
-      Vector2 input_DEM_pix(l,k);
+      Vector2i input_DEM_pix(l,k);
 
       if ( input_DEM_image(l,k) != globalParams.noDEMDataValue/*-10000*/ ) {
 
@@ -85,7 +85,7 @@ void vw::photometry::InitDEM( ModelParams input_img_params,
           numSamples(l, k) = 1;
         }
         else{
-          float weight = ComputeLineWeights(input_DEM_pix, input_img_params.centerLineDEM, input_img_params.maxDistArrayDEM);
+          float weight = input_img_params.demWeights->getWeight(input_DEM_pix);
           mean_DEM_image(l, k) = (float)input_DEM_image(l,k)*weight;
           //weight added by Ara 08/28
           var2_DEM_image(l, k) = (float)input_DEM_image(l,k)*(float)input_DEM_image(l,k)*weight;
@@ -116,7 +116,7 @@ void vw::photometry::InitDEM( ModelParams input_img_params,
         if ( input_DEM_image(l,k) != globalParams.noDEMDataValue/*-10000*/ ) {
 
           //check for overlap between the output image and the input DEM image
-          Vector2 overlap_dem_pix = overlap_DEM_geo.lonlat_to_pixel(input_DEM_geo.pixel_to_lonlat(input_DEM_pix));
+          Vector2i overlap_dem_pix = overlap_DEM_geo.lonlat_to_pixel(input_DEM_geo.pixel_to_lonlat(input_DEM_pix));
           float x = overlap_dem_pix[0];
           float y = overlap_dem_pix[1];
 
@@ -131,7 +131,7 @@ void vw::photometry::InitDEM( ModelParams input_img_params,
                 numSamples(l, k) = (int)numSamples(l, k) + 1;
               }
               else{
-                float weight = ComputeLineWeights(overlap_dem_pix, overlap_img_params[i].centerLineDEM, overlap_img_params[i].maxDistArrayDEM);
+                float weight = overlap_img_params[i].demWeights->getWeight(overlap_dem_pix);
                 mean_DEM_image(l, k) = (float)mean_DEM_image(l, k) + (float)interp_overlap_DEM_image(x, y)*weight;
                 //weight added by Ara 08/28/
                 var2_DEM_image(l, k) = (float)var2_DEM_image(l, k) + (float)interp_overlap_DEM_image(x, y)*(float)interp_overlap_DEM_image(x, y)*weight;
