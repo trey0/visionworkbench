@@ -104,6 +104,7 @@ docs/workbook/workbook.toc
 /src/vw/Core/tests/TestThread
 /src/vw/Core/tests/TestThreadPool
 /src/vw/Core/tests/TestThreadQueue
+/src/vw/Core/tests/TestTypeDeduction
 /src/vw/FileIO/tests/TestBlockFileIO
 /src/vw/FileIO/tests/TestDiskImageResource
 /src/vw/FileIO/tests/TestDiskImageView
@@ -127,6 +128,7 @@ docs/workbook/workbook.toc
 /src/vw/gui/vwv
 /src/vw/HDR/tests/TestCameraCurve
 /src/vw/Image/tests/TestAlgorithms
+/src/vw/Image/tests/TestBlockRasterize
 /src/vw/Image/tests/TestConvolution
 /src/vw/Image/tests/TestEdgeExtension
 /src/vw/Image/tests/TestFilter
