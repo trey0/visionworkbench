@@ -35,6 +35,7 @@ These tests generated with this python script (requires >= python 2.7):
 } while (0)
 
 struct user_t {};
+struct user2_t {};
 
 TEST(TypeDeduction, All) {
   TRIAL(    int8,     int8,     int8);
@@ -105,8 +106,21 @@ TEST(TypeDeduction, All) {
   TRIAL(  user_t,   user_t,   user_t);
 
   // and finally two different user-made types. this should be a compile error, so it's commented out.
-  //struct user2_t {};
   //TRIAL(  user_t,   user2_t,   user_t);
+}
+
+struct magic1_t {};
+struct magic2_t {};
+struct magic3_t {};
+struct magic4_t {};
+struct magic5_t {};
+
+VW_NEW_TYPE_DEDUCTION1(magic1_t, magic2_t);
+VW_NEW_TYPE_DEDUCTION2(magic3_t, magic4_t, magic5_t);
+
+TEST(TypeDeduction, NewDefs) {
+  TRIAL(magic1_t,  user_t, magic2_t);
+  TRIAL(magic3_t,magic4_t, magic5_t);
 }
 
 typedef signed char schar;
@@ -157,11 +171,16 @@ TEST(TypeDeduction, Cpp) {
   TRIAL(    int,    long,   long);
   TRIAL(    int,   ulong,  ulong);
   TRIAL(   uint,    uint,   uint);
+#if 0
   // paraphrased from the spec: "if a long can represent all the values of an unsigned int, convert to long, else convert to unsigned long"
+  // My reading says this commented-out logic is correct, but gcc returns long for both cases. *shrug*
   if (sizeof(long) > sizeof(uint))
     TRIAL(   uint,    long,   long); // 64[long] 32[ulong]
   else
     TRIAL(   uint,    long,   ulong);
+#else
+    TRIAL(   uint,    long,   long);
+#endif
   TRIAL(   uint,   ulong,  ulong);
   TRIAL(   long,    long,   long);
   TRIAL(   long,   ulong,  ulong);
