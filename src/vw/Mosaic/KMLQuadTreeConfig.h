@@ -14,10 +14,28 @@
 #ifndef __VW_MOSAIC_KMLQUADTREECONFIG_H__
 #define __VW_MOSAIC_KMLQUADTREECONFIG_H__
 
+#include <vw/FileIO/DiskImageResourcePNG.h>
+
 #include <vw/Mosaic/QuadTreeGenerator.h>
 #include <vw/Mosaic/QuadTreeConfig.h>
 
 namespace vw {
+
+  // This wrapper class intercepts premultiplied alpha data being written
+  // to a PNG resource, and implements a pyramid-based hole-filling
+  // algorithm to extrapolate data into the alpha-masked regions of the
+  // image.
+  //
+  // This is a workaround for a Google Earth bug, in which GE's
+  // rendering of semi-transparent GroundOverlays interpolates
+  // alpha-masked (i.e. invalid) data, resulting in annoying (generally
+  // black) fringes around semi-transparent images.
+  class DiskImageResourcePNGAlpha : public DiskImageResourcePNG {
+  public:
+      DiskImageResourcePNGAlpha( std::string const& filename, ImageFormat const& format );
+      void write( ImageBuffer const& src, BBox2i const& bbox );
+  };
+
 namespace mosaic {
 
   struct KMLQuadTreeConfigData;

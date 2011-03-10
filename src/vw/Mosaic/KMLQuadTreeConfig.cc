@@ -8,7 +8,6 @@
 #include <vw/Mosaic/KMLQuadTreeConfig.h>
 
 #include <vw/Image.h>
-#include <vw/FileIO/DiskImageResourcePNG.h>
 
 #include <iomanip>
 #include <sstream>
@@ -24,21 +23,9 @@ using vw::cartography::GeoReference;
 
 namespace vw {
 
-  // This wrapper class intercepts premultiplied alpha data being written
-  // to a PNG resource, and implements a pyramid-based hole-filling
-  // algorithm to extrapolate data into the alpha-masked regions of the
-  // image.
-  //
-  // This is a workaround hack for a Google Earth bug, in which GE's
-  // rendering of semi-transparent GroundOverlays interpolates
-  // alpha-masked (i.e. invalid) data, resulting in annoying (generally
-  // black) fringes around semi-transparent images.
-  class DiskImageResourcePNGAlphaHack : public DiskImageResourcePNG {
-  public:
+  DiskImageResourcePNGAlpha::DiskImageResourcePNGAlpha( std::string const& filename, ImageFormat const& format ) : DiskImageResourcePNG(filename,format) {}
 
-    DiskImageResourcePNGAlphaHack( std::string const& filename, ImageFormat const& format ) : DiskImageResourcePNG(filename,format) {}
-
-    void write( ImageBuffer const& src, BBox2i const& bbox ) {
+  void DiskImageResourcePNGAlpha::write( ImageBuffer const& src, BBox2i const& bbox ) {
       int levels = (int) floor(((std::min)(log((double)bbox.width()),log((double)bbox.height())))/log(2.));
       if( levels<2 || src.unpremultiplied || !(src.format.pixel_format==VW_PIXEL_RGBA || src.format.pixel_format==VW_PIXEL_GRAYA) )
         return DiskImageResourcePNG::write(src,bbox);
@@ -87,7 +74,6 @@ namespace vw {
       buffer.unpremultiplied = true;
       DiskImageResourcePNG::write(buffer,bbox);
     }
-  };
 
 namespace mosaic {
 
@@ -324,7 +310,7 @@ namespace mosaic {
   boost::shared_ptr<DstImageResource> KMLQuadTreeConfigData::tile_resource_func( QuadTreeGenerator const&, QuadTreeGenerator::TileInfo const& info, ImageFormat const& format ) const {
     create_directories( fs::path( info.filepath, fs::native ).branch_path() );
     if( info.filetype == ".png" && (format.pixel_format==VW_PIXEL_RGBA || format.pixel_format==VW_PIXEL_GRAYA) ) {
-      return boost::shared_ptr<DstImageResource>( new DiskImageResourcePNGAlphaHack( info.filepath+info.filetype, format ) );
+      return boost::shared_ptr<DstImageResource>( new DiskImageResourcePNGAlpha( info.filepath+info.filetype, format ) );
     }
     else {
       return boost::shared_ptr<DstImageResource>( DiskImageResource::create( info.filepath+info.filetype, format ) );
