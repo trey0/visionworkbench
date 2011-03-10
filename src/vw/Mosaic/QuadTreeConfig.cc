@@ -3,6 +3,7 @@
 #include <vw/Mosaic/GigapanQuadTreeConfig.h>
 #include <vw/Mosaic/GMapQuadTreeConfig.h>
 #include <vw/Mosaic/KMLQuadTreeConfig.h>
+#include <vw/Mosaic/UTMKMLQuadTreeConfig.h>
 #include <vw/Mosaic/TMSQuadTreeConfig.h>
 #include <vw/Mosaic/UniviewQuadTreeConfig.h>
 
@@ -21,6 +22,8 @@ boost::shared_ptr<QuadTreeConfig> QuadTreeConfig::make(const std::string& type) 
     return ptr_t(new GMapQuadTreeConfig());
   else if (utype == "KML")
     return ptr_t(new KMLQuadTreeConfig());
+  else if (utype == "UTMKML")
+    return ptr_t(new UTMKMLQuadTreeConfig());
   else if (utype == "TMS")
     return ptr_t(new TMSQuadTreeConfig());
   else if (utype == "UNIVIEW")

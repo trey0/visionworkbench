@@ -17,6 +17,7 @@ include_HEADERS = \
   GMapQuadTreeConfig.h \
   ImageComposite.h \
   KMLQuadTreeConfig.h \
+  UTMKMLQuadTreeConfig.h \
   QuadTreeConfig.h \
   QuadTreeGenerator.h \
   TMSQuadTreeConfig.h \
@@ -28,6 +29,7 @@ libvwMosaic_la_SOURCES = \
   GigapanQuadTreeConfig.cc \
   GMapQuadTreeConfig.cc \
   KMLQuadTreeConfig.cc \
+  UTMKMLQuadTreeConfig.cc \
   QuadTreeConfig.cc \
   QuadTreeGenerator.cc \
   TMSQuadTreeConfig.cc \
