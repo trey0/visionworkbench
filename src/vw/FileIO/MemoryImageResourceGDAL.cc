@@ -41,8 +41,9 @@ SrcMemoryImageResourceGDAL::SrcMemoryImageResourceGDAL(boost::shared_array<const
     m_data->open();
 }
 
-void SrcMemoryImageResourceGDAL::read( ImageBuffer const& dst, BBox2i const& bbox ) const {
-  VW_ASSERT( dst.format.cols == size_t(bbox.width()) && dst.format.rows == size_t(bbox.height()),
+void SrcMemoryImageResourceGDAL::read( ImageBuffer const& dst, BBox2i const& bbox_ ) const {
+  size_t width = bbox_.width(), height = bbox_.height(), planes = dst.format.planes;
+  VW_ASSERT( dst.format.cols == width && dst.format.rows == height,
              ArgumentErr() << VW_CURRENT_FUNCTION << ": Destination buffer has wrong dimensions!" );
   VW_ASSERT( dst.format.cols == size_t(cols()) && dst.format.rows == size_t(rows()),
              ArgumentErr() << VW_CURRENT_FUNCTION << ": Partial reads are not supported");
@@ -53,7 +54,7 @@ void SrcMemoryImageResourceGDAL::read( ImageBuffer const& dst, BBox2i const& bbo
   // no conversion necessary?
   bool simple = m_data->fmt().simple_convert(dst.format);
 
-  size_t bufsize = m_data->line_bytes() * bbox.height();
+  size_t bufsize = m_data->line_bytes() * height * planes;
 
   // If we don't need to convert, we read directly into the dst buffer (using a
   // noop_deleter, so the destructor doesn't try to delete it)
@@ -68,8 +69,8 @@ void SrcMemoryImageResourceGDAL::read( ImageBuffer const& dst, BBox2i const& bbo
     return;
 
   ImageFormat src_fmt(m_data->fmt());
-  src_fmt.rows = bbox.height();
-  src_fmt.cols = bbox.width();
+  src_fmt.rows = height;
+  src_fmt.cols = width;
 
   ImageBuffer src(src_fmt, buf.get());
   convert(dst, src, true);
@@ -77,6 +78,18 @@ void SrcMemoryImageResourceGDAL::read( ImageBuffer const& dst, BBox2i const& bbo
 
 ImageFormat SrcMemoryImageResourceGDAL::format() const {
   return m_data->fmt();
+}
+
+bool SrcMemoryImageResourceGDAL::has_nodata_read() const {
+  double value;
+  return m_data->nodata_read_ok(value);
+}
+
+double SrcMemoryImageResourceGDAL::nodata_read() const {
+  double value;
+  bool ok = m_data->nodata_read_ok(value);
+  VW_ASSERT(ok, IOErr() << VW_CURRENT_FUNCTION << ": This dataset does not have a nodata value.");
+  return value;
 }
 
 class DstMemoryImageResourceGDAL::Data : public fileio::detail::GdalIOCompress {
@@ -99,8 +112,8 @@ DstMemoryImageResourceGDAL::DstMemoryImageResourceGDAL(const ImageFormat& fmt)
   m_data->open();
 }
 
-void DstMemoryImageResourceGDAL::write( ImageBuffer const& src, BBox2i const& bbox ) {
-  size_t width = bbox.width(), height = bbox.height(), planes = src.format.planes;
+void DstMemoryImageResourceGDAL::write( ImageBuffer const& src, BBox2i const& bbox_ ) {
+  size_t width = bbox_.width(), height = bbox_.height(), planes = src.format.planes;
   VW_ASSERT( src.format.cols == width && src.format.rows == height,
              ArgumentErr() << VW_CURRENT_FUNCTION << ": partial writes not supported." );
   VW_ASSERT(m_data->ready(), LogicErr() << "Multiple writes to one DstMemoryImageResourceGDAL. Probably a bug?");
@@ -137,6 +150,10 @@ const uint8* DstMemoryImageResourceGDAL::data() const {
 
 size_t DstMemoryImageResourceGDAL::size() const {
   return m_data->size();
+}
+
+void DstMemoryImageResourceGDAL::set_nodata_write(double value) {
+  m_data->set_nodata(value);
 }
 
 } // namespace vw
