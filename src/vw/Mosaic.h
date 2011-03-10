@@ -14,6 +14,7 @@
 
 #include <vw/Mosaic/QuadTreeGenerator.h>
 #include <vw/Mosaic/KMLQuadTreeConfig.h>
+#include <vw/Mosaic/UTMKMLQuadTreeConfig.h>
 #include <vw/Mosaic/TMSQuadTreeConfig.h>
 #include <vw/Mosaic/UniviewQuadTreeConfig.h>
 #include <vw/Mosaic/GMapQuadTreeConfig.h>

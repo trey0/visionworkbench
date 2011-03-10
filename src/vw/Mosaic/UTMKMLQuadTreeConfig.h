@@ -14,6 +14,7 @@
 #ifndef __VW_MOSAIC_UTMKMLQUADTREECONFIG_H__
 #define __VW_MOSAIC_UTMKMLQUADTREECONFIG_H__
 
+#include <vw/Cartography/GeoReference.h>
 #include <vw/Mosaic/QuadTreeGenerator.h>
 #include <vw/Mosaic/QuadTreeConfig.h>
 #include <vw/Mosaic/KMLQuadTreeConfig.h>
@@ -23,40 +24,27 @@ namespace mosaic {
 
   struct UTMKMLQuadTreeConfigData;
 
-  class UTMKMLQuadTreeConfig : public QuadTreeConfig {
+  class UTMKMLQuadTreeConfig : public KMLQuadTreeConfig {
   public:
-    UTMKMLQuadTreeConfig();
+    UTMKMLQuadTreeConfig(void);
     virtual ~UTMKMLQuadTreeConfig() {}
 
-    // Set the extents (in degrees) of the quadtree.
-    void set_longlat_bbox( BBox2 const& bbox );
+    void set_output_utm_zone(int32 output_utm_zone) {
+        m_output_utm_zone = output_utm_zone;
+    }
 
-    // Set the title of the root UTMKML file.
-    void set_title( std::string const& title );
-
-    // Set the maximum level of detail (in pixels) at which each resolution
-    // of the quadtree is displayed.
-    void set_max_lod_pixels( int32 pixels );
-
-    // Set the drawOrder offset.  Overlays with positive offets are drawn on top.
-    void set_draw_order_offset( int32 offset );
-
-    // Set an option string of additional metadata to be included in the root UTMKML file.
-    void set_metadata( std::string const& data );
-
-    // Configure the given quadtree to generate this UTMKML.  This enables image
-    // cropping and sets the image path function, branch function, and metadata
-    // function.  If you intend to override any of these, be sure to do so
-    // *after* calling configure() or your changes will be overwritten.
     void configure( QuadTreeGenerator& qtree ) const;
 
     cartography::GeoReference output_georef(uint32 xresolution, uint32 yresolution = 0);
+    cartography::GeoReference get_output_georef(uint32 xresolution, uint32 yresolution) const;
+    cartography::GeoReference get_output_georef() const;
 
-  private:
-    // The implementation is stored in a shared pointer so that it can
-    // be safely bound to the quadtree callbacks in colsures even if
-    // this config object goes out of scope.
-    boost::shared_ptr<UTMKMLQuadTreeConfigData> m_data;
+    std::vector<std::pair<std::string,vw::BBox2i> > branch_func( QuadTreeGenerator const&, std::string const& name, BBox2i const& region ) const;
+
+  protected:
+    int32 m_output_utm_zone;
+    uint32 m_xresolution;
+    uint32 m_yresolution;
   };
 
 } // namespace mosaic

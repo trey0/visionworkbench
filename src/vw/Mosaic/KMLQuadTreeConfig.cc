@@ -6,6 +6,7 @@
 
 
 #include <vw/Mosaic/KMLQuadTreeConfig.h>
+#include <vw/Mosaic/KMLQuadTreeConfigPrivate.h>
 
 #include <vw/Image.h>
 
@@ -77,32 +78,6 @@ namespace vw {
 
 namespace mosaic {
 
-  struct KMLQuadTreeConfigData {
-    BBox2 m_longlat_bbox;
-    std::string m_title;
-    int m_max_lod_pixels;
-    int m_draw_order_offset;
-    std::string m_metadata;
-    mutable std::ostringstream m_root_node_tags;
-
-    std::string kml_latlonbox( BBox2 const& longlat_bbox, bool alt ) const;
-    std::string kml_network_link( std::string const& name, std::string const& href, BBox2 const& longlat_bbox, int min_lod_pixels ) const;
-    std::string kml_ground_overlay( std::string const& href, BBox2 const& region_bbox, BBox2 const& image_bbox, int draw_order, int min_lod_pixels, int max_lod_pixels ) const;
-    BBox2 pixels_to_longlat( BBox2i const& image_bbox, Vector2i const& dimensions ) const;
-
-    std::vector<std::pair<std::string,vw::BBox2i> > branch_func( QuadTreeGenerator const&, std::string const& name, BBox2i const& region ) const;
-    void metadata_func( QuadTreeGenerator const&, QuadTreeGenerator::TileInfo const& info ) const;
-    boost::shared_ptr<DstImageResource> tile_resource_func( QuadTreeGenerator const&, QuadTreeGenerator::TileInfo const& info, ImageFormat const& format ) const;
-
-  public:
-    KMLQuadTreeConfigData()
-      : m_longlat_bbox(-180,-90,360,180),
-        m_max_lod_pixels(1024),
-        m_draw_order_offset(0)
-    {}
-  };
-
-
   KMLQuadTreeConfig::KMLQuadTreeConfig()
     : m_data( new KMLQuadTreeConfigData() )
   {}
@@ -132,7 +107,7 @@ namespace mosaic {
     qtree.set_file_type( "auto" );
     qtree.set_image_path_func( QuadTreeGenerator::named_tiered_image_path() );
     qtree.set_metadata_func( boost::bind(&KMLQuadTreeConfigData::metadata_func,m_data,_1,_2) );
-    qtree.set_branch_func( boost::bind(&KMLQuadTreeConfigData::branch_func,m_data,_1,_2,_3) );
+    qtree.set_branch_func( boost::bind(&KMLQuadTreeConfig::branch_func,this,_1,_2,_3) );
     qtree.set_tile_resource_func( boost::bind(&KMLQuadTreeConfigData::tile_resource_func,m_data,_1,_2,_3) );
   }
 
@@ -277,15 +252,15 @@ namespace mosaic {
     }
   }
 
-  std::vector<std::pair<std::string,vw::BBox2i> > KMLQuadTreeConfigData::branch_func( QuadTreeGenerator const& qtree, std::string const& name, BBox2i const& region ) const {
+  std::vector<std::pair<std::string,vw::BBox2i> > KMLQuadTreeConfig::branch_func( QuadTreeGenerator const& qtree, std::string const& name, BBox2i const& region ) const {
     std::vector<std::pair<std::string,vw::BBox2i> > children;
     if( region.height() > qtree.get_tile_size() ) {
 
       Vector2i dims = qtree.get_dimensions();
-      double aspect_ratio = 2 * (region.width()/region.height()) * ( (m_longlat_bbox.width()/dims.x()) / (m_longlat_bbox.height()/dims.y()) );
+      double aspect_ratio = 2 * (region.width()/region.height()) * ( (m_data->m_longlat_bbox.width()/dims.x()) / (m_data->m_longlat_bbox.height()/dims.y()) );
 
-      double bottom_lat = m_longlat_bbox.max().y() - region.max().y()*m_longlat_bbox.height() / dims.y();
-      double top_lat = m_longlat_bbox.max().y() - region.min().y()*m_longlat_bbox.height() / dims.y();
+      double bottom_lat = m_data->m_longlat_bbox.max().y() - region.max().y()*m_data->m_longlat_bbox.height() / dims.y();
+      double top_lat = m_data->m_longlat_bbox.max().y() - region.min().y()*m_data->m_longlat_bbox.height() / dims.y();
       bool top_merge = ( bottom_lat > 0 ) && ( ( 1.0 / cos(M_PI/180 * bottom_lat) ) > aspect_ratio );
       bool bottom_merge = ( top_lat < 0 ) && ( ( 1.0 / cos(M_PI/180 * top_lat) ) > aspect_ratio );
 

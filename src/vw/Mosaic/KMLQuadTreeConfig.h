@@ -71,7 +71,9 @@ namespace mosaic {
 
     cartography::GeoReference output_georef(uint32 xresolution, uint32 yresolution = 0);
 
-  private:
+    std::vector<std::pair<std::string,vw::BBox2i> > branch_func( QuadTreeGenerator const&, std::string const& name, BBox2i const& region ) const;
+
+  protected:
     // The implementation is stored in a shared pointer so that it can
     // be safely bound to the quadtree callbacks in colsures even if
     // this config object goes out of scope.

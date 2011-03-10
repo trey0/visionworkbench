@@ -116,6 +116,7 @@ struct Options {
   struct {
     uint32 draw_order_offset;
     uint32 max_lod_pixels;
+    Tristate<int32> output_utm_zone;
   } kml;
 
   struct proj_{
@@ -165,6 +166,9 @@ struct Options {
       case Mode::UNIVIEW:
         VW_ASSERT(module_name.set(), Usage() << "Uniview and Celestia require --module-name");
         break;
+      case Mode::UTMKML:
+        VW_ASSERT(kml.output_utm_zone.set(), Usage() << "UTMKML requires --kml-output-utm-zone");
+        break;
       default:
         /* nothing */
         break;
@@ -184,6 +188,7 @@ static float hi_value = ScalarTypeLimits<float>::lowest();
 vw::int32 compute_resolution(const Mode& p, const GeoTransform& t, const Vector2& v) {
   switch(p.value()) {
     case Mode::KML:      return vw::cartography::output::kml::compute_resolution(t,v);
+    case Mode::UTMKML:   return vw::cartography::output::kml::compute_resolution(t,v);
     case Mode::TMS:      return vw::cartography::output::tms::compute_resolution(t,v);
     case Mode::UNIVIEW:  return vw::cartography::output::tms::compute_resolution(t,v);
     case Mode::GMAP:     return vw::cartography::output::tms::compute_resolution(t,v);
@@ -344,8 +349,15 @@ void do_mosaic(const Options& opt, const ProgressCallback *progress)
 
   boost::shared_ptr<QuadTreeConfig> config = QuadTreeConfig::make(opt.mode.string());
 
+  if (opt.mode == Mode::UTMKML) {
+    // have to set the utm zone before galling output_georef()
+    UTMKMLQuadTreeConfig *c3 = dynamic_cast<UTMKMLQuadTreeConfig*>(config.get());
+    c3->set_output_utm_zone(opt.kml.output_utm_zone);
+  }
+
   // Now that we have the best resolution, we can get our output_georef.
   int xresolution = total_resolution / opt.aspect_ratio, yresolution = total_resolution;
+  printf("foo total_resolution=%d xres=%d yres=%d\n", total_resolution, xresolution, yresolution);
 
   GeoReference output_georef = config->output_georef(xresolution, yresolution);
   vw_out(VerboseDebugMessage, "tool") << "Output Georef:\n" << output_georef << endl;
@@ -443,7 +455,7 @@ void do_mosaic(const Options& opt, const ProgressCallback *progress)
 
   // This whole bit here is terrible. This functionality should be moved into
   // the Config base class somehow.
-  if( opt.mode == Mode::KML ) {
+  if( opt.mode == Mode::KML || opt.mode == Mode::UTMKML ) {
     KMLQuadTreeConfig *c2 = dynamic_cast<KMLQuadTreeConfig*>(config.get());
     BBox2 ll_bbox( -180.0 + (360.0*total_bbox.min().x())/xresolution,
                     180.0 - (360.0*total_bbox.max().y())/yresolution,
@@ -522,6 +534,7 @@ int handle_options(int argc, char *argv[], Options& opt) {
     ("tile-size"        , po::value(&opt.tile_size)                              , "Tile size in pixels")
     ("max-lod-pixels"   , po::value(&opt.kml.max_lod_pixels)->default_value(1024), "Max LoD in pixels, or -1 for none (kml only)")
     ("draw-order-offset", po::value(&opt.kml.draw_order_offset)->default_value(0), "Offset for the <drawOrder> tag for this overlay (kml only)")
+    ("kml-output-utm-zone", po::value(&opt.kml.output_utm_zone)                  , "Set the UTM output zone for UTMKML mode (negative for south)")
     ("multiband"        , po::bool_switch(&opt.multiband)                        , "Composite images using multi-band blending")
     ("aspect-ratio"     , po::value(&opt.aspect_ratio)                           , "Pixel aspect ratio (for polar overlays; should be a power of two)")
     ("global-resolution", po::value(&opt.global_resolution)                      , "Override the global pixel resolution; should be a power of two");
